@@ -161,7 +161,7 @@ var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[]
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
 var MARCH="Achat de marchandises";
 var MARCH_TYPES=["Bracelet","Coque","Câble","Chargeur","Verre protecteur","Autre"];
-var EXP_CATS=[MARCH,"Publicité","Emballage","Transport et déplacements","Abonnements et outils","Photos et contenu","Hébergement web","Autre"];
+var EXP_CATS=[MARCH,"Publicité Meta (Facebook et Instagram)","Emballage","Transport et déplacements","Abonnements et outils","Photos et contenu","Hébergement web","Autre"];
 var STATUS={a_livrer:["À livrer","warn"],livre:["Livré","good"],annule:["Annulé","off"]};
 
 /* ---------- accès au serveur ---------- */
@@ -174,7 +174,7 @@ function api(route,body,form){
     if(!r.ok)throw new Error(j.error||"Erreur "+r.status);
     return j})});
 }
-function refresh(){return api("state").then(function(st){products=st.products||[];orders=st.orders||[];expenses=(st.expenses||[]).map(function(e){if(e.category==="Site web")e.category="Hébergement web";return e});render()})}
+function refresh(){return api("state").then(function(st){products=st.products||[];orders=st.orders||[];expenses=(st.expenses||[]).map(function(e){if(e.category==="Site web")e.category="Hébergement web";if(e.category==="Publicité")e.category="Publicité Meta (Facebook et Instagram)";return e});render()})}
 function put(coll,id,data){return api("save",{coll:coll,id:id,data:data}).then(refresh)}
 function patch(coll,id,obj){var list=coll==="orders"?orders:products;var cur=list.find(function(x){return x.id===id});var d=Object.assign({},cur,obj);delete d.id;return put(coll,id,d)}
 function del(coll,id){return api("delete",{coll:coll,id:id}).then(refresh)}
@@ -231,7 +231,7 @@ function viewHome(){
   var tiles='<div class="grid3">'+
    '<div class="card kpi"><span>Ventes</span><b>'+F(rev)+'</b><small>'+inM.length+' commande'+(inM.length>1?'s':'')+'</small></div>'+
    '<div class="card kpi"><span>Achats de marchandises</span><b>'+F(expMarch)+'</b><small>Payé aux fournisseurs</small></div>'+
-   '<div class="card kpi"><span>Autres dépenses</span><b>'+F(expTot)+'</b><small>Pub, emballage, outils…</small></div>'+
+   '<div class="card kpi"><span>Autres dépenses</span><b>'+F(expTot)+'</b><small>Pub Meta, emballage, outils…</small></div>'+
    '<div class="card kpi main"><span>Bénéfice net</span><b style="'+(net<0?'color:var(--bad)':'')+'">'+F(net)+'</b><small>Marge '+F(profit)+' moins autres dépenses</small></div>'+
    '<div class="card kpi"><span>Reste en caisse</span><b style="'+(cash<0?'color:var(--bad)':'')+'">'+F(cash)+'</b><small>Encaissé moins tout ce qui est sorti</small></div>'+
    '<div class="card kpi"><span>À encaisser</span><b>'+F(due)+'</b><small>Commandes non payées</small></div></div>';
