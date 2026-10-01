@@ -1,0 +1,33 @@
+WATCH CÔTE D'IVOIRE - GESTION
+=============================
+
+Installation (5 minutes)
+1. Connectez-vous à votre hébergement (cPanel > Gestionnaire de fichiers, ou FTP).
+2. Créez un sous-domaine (ex. gestion.watchcotedivoire.com) dont la racine est public_html/gestion.
+3. Envoyez dans ce dossier TOUT le contenu du dossier "gestion" de ce zip
+   (api.php, index.html, les icônes, manifest.webmanifest et le dossier uploads).
+4. Ouvrez https://gestion.watchcotedivoire.com dans votre navigateur.
+5. À la première visite, choisissez votre mot de passe (8 caractères minimum).
+   Les dossiers "data" et "uploads" se créent tout seuls.
+
+Sur iPhone : ouvrez le lien dans Safari, touchez Partager, puis
+"Sur l'écran d'accueil". L'outil s'ouvre ensuite comme une application.
+
+Prérequis : PHP 7.4 ou plus avec SQLite (présent sur la quasi-totalité des
+hébergements WordPress/WooCommerce). Aucune base MySQL à créer.
+
+Sauvegarde : sur l'Accueil, le lien "Télécharger une sauvegarde" exporte vos
+produits et commandes. Gardez aussi une copie des dossiers "data" et "uploads"
+de temps en temps.
+
+Sécurité : le dossier "data" est fermé par un fichier .htaccess (Apache/LiteSpeed).
+Si votre hébergement utilise Nginx, demandez au support de bloquer l'accès
+public au dossier /gestion/data/.
+Gardez /gestion/ séparé des fichiers de WordPress.
+
+Mises à jour
+------------
+Quand une nouvelle version est prête, un bandeau "Une nouvelle version est disponible"
+apparaît en haut de l'outil. Cliquez sur "Mettre à jour". Vos produits, commandes,
+dépenses et photos ne sont pas touchés. En bas de l'Accueil, "Version précédente"
+permet de revenir en arrière.
