@@ -182,7 +182,9 @@ function del(coll,id){return api("delete",{coll:coll,id:id}).then(refresh)}
 /* ---------- calculs ---------- */
 function calc(o){var rev=0,cost=0,qty=0;(o.items||[]).forEach(function(i){rev+=i.qty*i.price;cost+=i.qty*(i.cost||0);qty+=i.qty});return {rev:rev,cost:cost,qty:qty,profit:rev-cost-(o.fee||0)}}
 function isOpex(e){return e.category!==MARCH}
-function inRange(d){return month==="all"||(d||"").slice(0,7)===month}
+function inRange(d){return month==="all"||(d||"").indexOf(month)===0}
+var periodLabel=function(m){return m==="all"?"Toutes les années":m.length===4?"Année "+m:monthLabel(m)};
+var MONTHS=["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"];
 function active(o){return o.status!=="annule"}
 function thumbUrl(p){return p&&p.photo?p.photo.replace("uploads/","uploads/t_"):""}
 function thumb(p,cls){var u=thumbUrl(p);return '<div class="thumb '+(cls||"")+'">'+(u?'<img loading="lazy" alt="" src="'+esc(u)+'">':esc(((p&&p.name)||"?").charAt(0).toUpperCase()))+'</div>'}
@@ -206,16 +208,20 @@ function render(){
   if(keep!==null){var s=$("#search");if(s){s.focus();s.setSelectionRange(keep,keep)}}
 }
 function monthSelect(){
-  var ys={};ys[today().slice(0,4)]=1;if(month!=="all")ys[month.slice(0,4)]=1;
-  orders.forEach(function(o){if(o.date)ys[o.date.slice(0,4)]=1});expenses.forEach(function(e){if(e.date)ys[e.date.slice(0,4)]=1});
-  var ks=[];Object.keys(ys).forEach(function(y){for(var m=1;m<=12;m++)ks.push(y+"-"+(m<10?"0":"")+m)});
-  ks.sort().reverse();
-  return '<select id="monthSel" aria-label="Période" style="width:auto"><option value="all"'+(month==="all"?' selected':'')+'>Tous les mois</option>'+ks.map(function(k){return '<option value="'+k+'"'+(k===month?' selected':'')+'>'+esc(monthLabel(k))+'</option>'}).join("")+'</select>';
+  var cy=+today().slice(0,4),lo=cy-1,hi=cy+1;
+  orders.forEach(function(o){if(o.date)lo=Math.min(lo,+o.date.slice(0,4))});expenses.forEach(function(e){if(e.date)lo=Math.min(lo,+e.date.slice(0,4))});
+  var y=month==="all"?"all":month.slice(0,4),m=month.length===7?month.slice(5):"";
+  if(y!=="all"){lo=Math.min(lo,+y);hi=Math.max(hi,+y)}
+  var yo='<option value="all"'+(y==="all"?' selected':'')+'>Toutes les années</option>';
+  for(var i=hi;i>=lo;i--)yo+='<option value="'+i+'"'+(String(i)===y?' selected':'')+'>'+i+'</option>';
+  var mo='<option value=""'+(m===""?' selected':'')+'>Toute l\'année</option>';
+  for(var k=1;k<=12;k++){var v=(k<10?"0":"")+k;mo+='<option value="'+v+'"'+(v===m?' selected':'')+'>'+MONTHS[k-1]+'</option>'}
+  return '<select id="yearSel" aria-label="Année" style="width:auto">'+yo+'</select><select id="monthSel" aria-label="Mois" style="width:auto"'+(y==="all"?' disabled':'')+'>'+mo+'</select>';
 }
 
 function viewHome(){
-  var inM=orders.filter(function(o){return active(o)&&(month==="all"||(o.date||"").slice(0,7)===month)});
-  var base=month==="all"?today().slice(0,7):month;
+  var inM=orders.filter(function(o){return active(o)&&inRange(o.date)});
+  var base=month==="all"?today().slice(0,7):month.length===4?(month===today().slice(0,4)?today().slice(0,7):month+"-12"):month;
   var rev=0,profit=0,due=0,units=0;
   var exM=expenses.filter(function(e){return inRange(e.date)}),expTot=exM.filter(isOpex).reduce(function(s,e){return s+(e.amount||0)},0),expMarch=exM.filter(function(e){return !isOpex(e)}).reduce(function(s,e){return s+(e.amount||0)},0);
   var cashIn=0,fees=0;inM.forEach(function(o){if(o.paid)cashIn+=calc(o).rev;fees+=o.fee||0});var cash=cashIn-fees-expTot-expMarch;
@@ -258,7 +264,7 @@ function viewHome(){
   inM.forEach(function(o){var k=o.channel||"Autre";if(k==="Site watchcotedivoire.com")k="Site web";var c=calc(o);var e=ch[k]||(ch[k]={r:0,n:0,p:0});e.r+=c.rev;e.p+=c.profit;e.n++});
   exM.forEach(function(e){if(!e.channel||!isOpex(e))return;var k=e.channel;var t=ch[k]||(ch[k]={r:0,n:0,p:0});t.x=(t.x||0)+(e.amount||0)});
   var chK=Object.keys(ch).sort(function(a,b){return ch[b].r-ch[a].r||ch[b].n-ch[a].n}),chTot=chK.reduce(function(s,k){return s+ch[k].r},0)||1;
-  var orig='<div class="card"><div class="row" style="justify-content:space-between;margin-bottom:6px"><h2>Ventes par canal</h2><span class="s" style="color:var(--muted);font-size:13px">'+(month==="all"?"Tous les mois":esc(monthLabel(month)))+'</span></div><div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Canal</th><th>Cmd</th><th>Ventes</th><th>Bénéfice</th><th>Part</th></tr></thead><tbody>'+chK.map(function(k){var e=ch[k],pc=Math.round(e.r/chTot*100);return '<tr'+(e.n?'':' class="zero"')+'><td><b>'+esc(k)+'</b><div class="s" style="font-size:12px;color:var(--muted)">'+(e.n?'Panier '+F(e.r/e.n):'Aucune vente')+(e.x?' · Dépenses '+F(e.x)+' · Net '+F(e.p-e.x):'')+'</div><div class="bar"><i style="width:'+pc+'%"></i></div></td><td>'+e.n+'</td><td>'+F(e.r)+'</td><td>'+F(e.p)+'</td><td>'+pc+' %</td></tr>'}).join("")+'</tbody></table></div></div>';
+  var orig='<div class="card"><div class="row" style="justify-content:space-between;margin-bottom:6px"><h2>Ventes par canal</h2><span class="s" style="color:var(--muted);font-size:13px">'+esc(periodLabel(month))+'</span></div><div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Canal</th><th>Cmd</th><th>Ventes</th><th>Bénéfice</th><th>Part</th></tr></thead><tbody>'+chK.map(function(k){var e=ch[k],pc=Math.round(e.r/chTot*100);return '<tr'+(e.n?'':' class="zero"')+'><td><b>'+esc(k)+'</b><div class="s" style="font-size:12px;color:var(--muted)">'+(e.n?'Panier '+F(e.r/e.n):'Aucune vente')+(e.x?' · Dépenses '+F(e.x)+' · Net '+F(e.p-e.x):'')+'</div><div class="bar"><i style="width:'+pc+'%"></i></div></td><td>'+e.n+'</td><td>'+F(e.r)+'</td><td>'+F(e.p)+'</td><td>'+pc+' %</td></tr>'}).join("")+'</tbody></table></div></div>';
   var sv='<div class="card kpi"><span>Valeur du stock (au prix d\'achat)</span><b>'+F(stockValue)+'</b></div>';
   return '<div style="display:flex;flex-direction:column;gap:18px">'+tiles+chart+'<div class="cols">'+todo+lowC+'</div><div class="cols">'+best+sv+'</div>'+orig+'<div class="foot"><a href="api.php?r=export">Télécharger une sauvegarde</a><span>Version '+esc(appVersion||"?")+'</span><button class="linkbtn" data-act="chkupd">Vérifier les mises à jour</button><button class="linkbtn" data-act="rollback" data-confirm="Revenir à la version précédente ?">Version précédente</button></div></div>';
 }
@@ -304,7 +310,7 @@ function viewExpenses(){
   var cats=ks.length?'<div class="card"><h2>Par catégorie</h2><div class="list" style="margin-top:6px">'+ks.map(function(k){var pc=Math.round(by[k]/(tot||1)*100);return '<div class="item" style="flex-direction:column;align-items:stretch;gap:6px"><div class="row" style="justify-content:space-between;flex-wrap:nowrap"><span class="t">'+esc(k)+'</span><span class="num">'+F(by[k])+' <span class="s">· '+pc+' %</span></span></div><div style="height:6px;border-radius:99px;background:var(--line)"><div style="height:100%;width:'+pc+'%;border-radius:99px;background:var(--accent)"></div></div></div>'}).join("")+'</div></div>':"";
   cats=types+cats;
   return '<div style="display:flex;flex-direction:column;gap:14px"><div class="row"><h2 class="grow">Dépenses</h2><button class="btn primary" data-act="newexp">+ Nouvelle dépense</button></div>'+
-   '<div class="grid2"><div class="card kpi"><span>Total sorti</span><b>'+F(tot)+'</b><small>'+(month==="all"?"Toutes périodes":esc(monthLabel(month)))+'</small></div><div class="card kpi"><span>Dont marchandises</span><b>'+F(march)+'</b><small>'+Math.round(march/(tot||1)*100)+' % des sorties</small></div></div>'+cats+
+   '<div class="grid2"><div class="card kpi"><span>Total sorti</span><b>'+F(tot)+'</b><small>'+esc(periodLabel(month))+'</small></div><div class="card kpi"><span>Dont marchandises</span><b>'+F(march)+'</b><small>'+Math.round(march/(tot||1)*100)+' % des sorties</small></div></div>'+cats+
    '<div class="card"><div class="list">'+(list.length?list.map(function(e){return '<button class="item clickable" data-act="editexp" data-id="'+e.id+'"><div class="grow"><div class="t">'+(isOpex(e)?esc(e.category||"Autre"):'Marchandises · '+esc(e.item||"Non précisé")+(e.qty?' · '+e.qty+' pièces':''))+(e.note?' · '+esc(e.note):'')+'</div><div class="s">'+esc(dateLabel(e.date))+(isOpex(e)?(e.channel?' · '+esc(e.channel):''):(e.supplier?' · '+esc(e.supplier):''))+'</div></div><div class="num">'+F(e.amount)+'</div></button>'}).join(""):'<div class="empty">Aucune dépense sur cette période. Ajoutez la publicité, les emballages, les outils…</div>')+'</div></div>'+
    '<p style="margin:0;color:var(--muted);font-size:13px">Les achats de marchandises comptent dans l\'argent sorti (Reste en caisse), mais pas dans le bénéfice : le bénéfice déduit déjà le prix d\'achat des articles vendus. Les frais de livraison saisis dans les commandes sont aussi déjà comptés.</p></div>';
 }
@@ -526,7 +532,8 @@ document.addEventListener("change",function(e){
   if(e.target.id==="x_cat"){var m=e.target.value===MARCH;$("#x_march").hidden=!m;$("#x_chan").hidden=m;return}
   if(e.target.id==="p_cat"){var cur=readSizes();$("#sizes").innerHTML=sizeRows(e.target.value,cur);return}
   if(e.target.id==="p_file"){var f=e.target.files&&e.target.files[0];if(f)uploadPhoto(f);e.target.value="";return}
-  if(e.target.id==="monthSel"){month=e.target.value;render();return}
+  if(e.target.id==="yearSel"){var yv=e.target.value,cm=month.length===7?month.slice(5):"";month=yv==="all"?"all":yv+(cm?"-"+cm:"");render();return}
+  if(e.target.id==="monthSel"){var yy=month==="all"?today().slice(0,4):month.slice(0,4),mv=e.target.value;month=mv?yy+"-"+mv:yy;render();return}
   if(e.target.dataset&&e.target.dataset.f==="pid"){
     var p=pById(e.target.value),row=e.target.closest(".itemrow");
     if(p){$('[data-f="price"]',row).value=p.price}
