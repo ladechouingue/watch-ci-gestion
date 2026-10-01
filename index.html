@@ -296,7 +296,7 @@ function viewStock(){
   var cards=gs.map(function(g){
     var b=g.base,m=b.price-b.cost,flag=g.items.some(function(p){return (p.stock||0)<=(p.alert==null?3:p.alert)});
     return '<div class="card"><div class="item" style="padding-top:0"><button class="clickable" style="width:auto" data-act="editp" data-g="'+g.g+'" aria-label="Modifier">'+thumb(b)+'</button><button class="grow clickable" data-act="editp" data-g="'+g.g+'"><div class="t">'+esc(b.name)+'</div><div class="s">'+esc([b.category,b.color].filter(Boolean).join(" · "))+'</div><div class="s">Achat '+F(b.cost)+' · Vente '+F(b.price)+' · Marge '+F(m)+'</div></button><span class="pill '+(flag?'warn':'good')+'">'+g.total+' au total</span></div>'+
-      g.items.map(function(p){return '<div class="vrow"><span class="t">'+(p.size?esc(p.size)+' mm':'Taille unique')+'</span><span style="display:flex;gap:10px;align-items:center">'+((p.stock||0)<=0?'<span class="pill bad">Rupture</span>':(p.stock||0)<=(p.alert==null?3:p.alert)?'<span class="pill warn">Faible</span>':'')+'<span class="stepper"><button data-act="adj" data-id="'+p.id+'" data-d="-1" aria-label="Retirer un">−</button><span class="num">'+(p.stock||0)+'</span><button data-act="adj" data-id="'+p.id+'" data-d="1" aria-label="Ajouter un">+</button></span></span></div>'}).join("")+'</div>';
+      g.items.map(function(p){return '<div class="vrow"><span class="t">'+(p.size?esc(p.size)+' MM':'Taille unique')+'</span><span style="display:flex;gap:10px;align-items:center">'+((p.stock||0)<=0?'<span class="pill bad">Rupture</span>':(p.stock||0)<=(p.alert==null?3:p.alert)?'<span class="pill warn">Faible</span>':'')+'<span class="stepper"><button data-act="adj" data-id="'+p.id+'" data-d="-1" aria-label="Retirer un">−</button><span class="num">'+(p.stock||0)+'</span><button data-act="adj" data-id="'+p.id+'" data-d="1" aria-label="Ajouter un">+</button></span></span></div>'}).join("")+'</div>';
   }).join("");
   return '<div style="display:flex;flex-direction:column;gap:14px"><div class="row"><h2 class="grow">Stock</h2><button class="btn primary" data-act="newp">+ Nouveau produit</button></div>'+
    '<input id="search" type="search" placeholder="Chercher un modèle, une taille, une couleur" value="'+esc(q)+'">'+
@@ -363,7 +363,7 @@ function openSheet(html){
 function closeSheet(){$("#layer").innerHTML=""}
 document.addEventListener("keydown",function(e){if(e.key==="Escape")closeSheet();if(e.key==="Enter"&&e.target.id==="pw"){e.preventDefault();var b=$("[data-act=login],[data-act=setup]");if(b)b.click()}});
 
-function productOptions(sel){return '<option value="">Choisir un produit</option>'+groups().map(function(g){return '<optgroup label="'+esc(g.base.name+(g.base.color?" · "+g.base.color:""))+'">'+g.items.map(function(p){return '<option value="'+p.id+'"'+(p.id===sel?' selected':'')+'>'+esc(p.size?p.size+" mm":"Taille unique")+' (stock '+(p.stock||0)+')</option>'}).join("")+'</optgroup>'}).join("")}
+function productOptions(sel){return '<option value="">Choisir un produit</option>'+groups().map(function(g){return '<optgroup label="'+esc(g.base.name+(g.base.color?" · "+g.base.color:""))+'">'+g.items.map(function(p){return '<option value="'+p.id+'"'+(p.id===sel?' selected':'')+'>'+esc(p.size?p.size+" MM":"Taille unique")+' (stock '+(p.stock||0)+')</option>'}).join("")+'</optgroup>'}).join("")}
 function itemRowHtml(){return '<div class="itemrow"><label class="f">Article<select data-f="pid">'+productOptions("")+'</select></label><label class="f">Qté<input data-f="qty" type="number" min="1" value="1" inputmode="numeric"></label><label class="f">Prix unit.<input data-f="price" type="number" min="0" inputmode="numeric" placeholder="F"></label><button class="btn small" data-act="rmrow" aria-label="Retirer la ligne" type="button">×</button></div>'}
 function newOrderSheet(){
   if(!products.length){toast("Ajoutez d'abord au moins un produit dans Stock.");return}
@@ -429,7 +429,7 @@ function sizeRows(cat,state){
   var list=presets(cat).slice();Object.keys(state).forEach(function(k){if(list.indexOf(k)<0&&state[k].on)list.push(k)});
   if(!list.length)list=[""];
   return list.map(function(sz){var st=state[sz]||{on:false,stock:0};
-    return '<div class="srow" data-size="'+esc(sz)+'"><label class="row" style="gap:8px;flex:1"><input type="checkbox" data-s="on" style="width:auto"'+(st.on?' checked':'')+'><span class="t">'+(sz?esc(sz)+' mm':'Taille unique')+'</span></label><label class="f" style="flex-direction:row;align-items:center;gap:6px">Stock<input data-s="stock" type="number" value="'+(st.stock||0)+'" inputmode="numeric" style="width:84px"></label></div>'}).join("");
+    return '<div class="srow" data-size="'+esc(sz)+'"><label class="row" style="gap:8px;flex:1"><input type="checkbox" data-s="on" style="width:auto"'+(st.on?' checked':'')+'><span class="t">'+(sz?esc(sz)+' MM':'Taille unique')+'</span></label><label class="f" style="flex-direction:row;align-items:center;gap:6px">Stock<input data-s="stock" type="number" value="'+(st.stock||0)+'" inputmode="numeric" style="width:84px"></label></div>'}).join("");
 }
 function readSizes(){
   var st={};document.querySelectorAll("#sizes .srow").forEach(function(r){st[r.dataset.size]={on:r.querySelector('[data-s=on]').checked,stock:parseInt(r.querySelector('[data-s=stock]').value,10)||0}});return st;
