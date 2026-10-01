@@ -254,7 +254,7 @@ switch ($r) {
             if ($rel === '' || strpos($rel, '..') !== false || $rel[0] === '/' || $rel[0] === '.') { continue; }
             $top = explode('/', $rel)[0];
             if (in_array($top, $skipTop, true) || basename($rel)[0] === '.') { continue; }
-            if (!in_array(strtolower(pathinfo($rel, PATHINFO_EXTENSION)), $allowed, true)) { continue; }
+            if ($rel !== 'VERSION' && !in_array(strtolower(pathinfo($rel, PATHINFO_EXTENSION)), $allowed, true)) { continue; }
             $files[$rel] = (string)$z->getFromIndex($i);
         }
         $z->close(); @unlink($tmpZip);
