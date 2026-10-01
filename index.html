@@ -206,8 +206,10 @@ function render(){
   if(keep!==null){var s=$("#search");if(s){s.focus();s.setSelectionRange(keep,keep)}}
 }
 function monthSelect(){
-  var set={};set[today().slice(0,7)]=1;if(month!=="all")set[month]=1;orders.forEach(function(o){if(o.date)set[o.date.slice(0,7)]=1});
-  var ks=Object.keys(set).sort().reverse();
+  var ys={};ys[today().slice(0,4)]=1;if(month!=="all")ys[month.slice(0,4)]=1;
+  orders.forEach(function(o){if(o.date)ys[o.date.slice(0,4)]=1});expenses.forEach(function(e){if(e.date)ys[e.date.slice(0,4)]=1});
+  var ks=[];Object.keys(ys).forEach(function(y){for(var m=1;m<=12;m++)ks.push(y+"-"+(m<10?"0":"")+m)});
+  ks.sort().reverse();
   return '<select id="monthSel" aria-label="Période" style="width:auto"><option value="all"'+(month==="all"?' selected':'')+'>Tous les mois</option>'+ks.map(function(k){return '<option value="'+k+'"'+(k===month?' selected':'')+'>'+esc(monthLabel(k))+'</option>'}).join("")+'</select>';
 }
 
