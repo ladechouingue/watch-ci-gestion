@@ -158,10 +158,11 @@ var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Da
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
+var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
 var MARCH="Achat de marchandises";
 var MARCH_TYPES=["Bracelet","Coque","Câble","Chargeur","Verre protecteur","Autre"];
-var EXP_CATS=[MARCH,"Publicité Meta (Facebook et Instagram)","Emballage","Transport et déplacements","Abonnements et outils","Photos et contenu","Hébergement web","Autre"];
+var EXP_CATS=[MARCH,META,"Emballage","Transport et déplacements","Abonnements et outils","Photos et contenu","Hébergement web","Autre"];
 var STATUS={a_livrer:["À livrer","warn"],livre:["Livré","good"],annule:["Annulé","off"]};
 
 /* ---------- accès au serveur ---------- */
@@ -174,7 +175,7 @@ function api(route,body,form){
     if(!r.ok)throw new Error(j.error||"Erreur "+r.status);
     return j})});
 }
-function refresh(){return api("state").then(function(st){products=st.products||[];orders=st.orders||[];expenses=(st.expenses||[]).map(function(e){if(e.category==="Site web")e.category="Hébergement web";if(e.category==="Publicité")e.category="Publicité Meta (Facebook et Instagram)";return e});render()})}
+function refresh(){return api("state").then(function(st){products=st.products||[];orders=st.orders||[];expenses=(st.expenses||[]).map(function(e){if(e.category==="Site web")e.category="Hébergement web";if(e.category==="Publicité")e.category=META;return e});render()})}
 function put(coll,id,data){return api("save",{coll:coll,id:id,data:data}).then(refresh)}
 function patch(coll,id,obj){var list=coll==="orders"?orders:products;var cur=list.find(function(x){return x.id===id});var d=Object.assign({},cur,obj);delete d.id;return put(coll,id,d)}
 function del(coll,id){return api("delete",{coll:coll,id:id}).then(refresh)}
@@ -262,7 +263,7 @@ function viewHome(){
   var best='<div class="card"><h2>Meilleures ventes</h2><div class="list" style="margin-top:6px">'+(top5.length?top5.map(function(t){return '<div class="item"><div class="grow t">'+esc(t[0])+'</div><div class="num">'+t[1]+' vendu'+(t[1]>1?'s':'')+'</div></div>'}).join(""):'<div class="empty">Aucune vente ce mois-ci.</div>')+'</div></div>';
   var ch={};CHANNELS.forEach(function(k){ch[k]={r:0,n:0,p:0}});
   inM.forEach(function(o){var k=o.channel||"Autre";if(k==="Site watchcotedivoire.com")k="Site web";var c=calc(o);var e=ch[k]||(ch[k]={r:0,n:0,p:0});e.r+=c.rev;e.p+=c.profit;e.n++});
-  exM.forEach(function(e){if(!e.channel||!isOpex(e))return;var k=e.channel;var t=ch[k]||(ch[k]={r:0,n:0,p:0});t.x=(t.x||0)+(e.amount||0)});
+  exM.forEach(function(e){if(e.category===META){var h=(e.amount||0)/2;["Facebook","Instagram"].forEach(function(k){var t=ch[k]||(ch[k]={r:0,n:0,p:0});t.x=(t.x||0)+h});return}if(!e.channel||!isOpex(e))return;var k=e.channel;var t=ch[k]||(ch[k]={r:0,n:0,p:0});t.x=(t.x||0)+(e.amount||0)});
   var chK=Object.keys(ch).sort(function(a,b){return ch[b].r-ch[a].r||ch[b].n-ch[a].n}),chTot=chK.reduce(function(s,k){return s+ch[k].r},0)||1;
   var orig='<div class="card"><div class="row" style="justify-content:space-between;margin-bottom:6px"><h2>Ventes par canal</h2><span class="s" style="color:var(--muted);font-size:13px">'+esc(periodLabel(month))+'</span></div><div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Canal</th><th>Cmd</th><th>Ventes</th><th>Bénéfice</th><th>Part</th></tr></thead><tbody>'+chK.map(function(k){var e=ch[k],pc=Math.round(e.r/chTot*100);return '<tr'+(e.n?'':' class="zero"')+'><td><b>'+esc(k)+'</b><div class="s" style="font-size:12px;color:var(--muted)">'+(e.n?'Panier '+F(e.r/e.n):'Aucune vente')+(e.x?' · Dépenses '+F(e.x)+' · Net '+F(e.p-e.x):'')+'</div><div class="bar"><i style="width:'+pc+'%"></i></div></td><td>'+e.n+'</td><td>'+F(e.r)+'</td><td>'+F(e.p)+'</td><td>'+pc+' %</td></tr>'}).join("")+'</tbody></table></div></div>';
   var sv='<div class="card kpi"><span>Valeur du stock (au prix d\'achat)</span><b>'+F(stockValue)+'</b></div>';
@@ -317,14 +318,14 @@ function viewExpenses(){
 function expenseSheet(id){
   var e=id?expenses.find(function(x){return x.id===id}):null;e=e||{date:today(),category:MARCH,amount:"",channel:"",note:"",item:"",qty:"",supplier:""};
   var cats=EXP_CATS.slice();if(e.category&&cats.indexOf(e.category)<0)cats.push(e.category);
-  var isM=e.category===MARCH;
+  var isM=e.category===MARCH,noCh=isM||e.category===META;
   var types=MARCH_TYPES.slice();if(e.item&&types.indexOf(e.item)<0)types.push(e.item);
   openSheet('<h2>'+(id?'Modifier la dépense':'Nouvelle dépense')+'</h2>'+
    '<label class="f">Catégorie<select id="x_cat">'+cats.map(function(c){return '<option'+(c===e.category?' selected':'')+'>'+esc(c)+'</option>'}).join("")+'</select></label><label class="f">Date<input id="x_date" type="date" value="'+esc(e.date)+'"></label>'+
    '<div id="x_march" class="card" style="display:flex;flex-direction:column;gap:10px"'+(isM?'':' hidden')+'><label class="f">Quel type de marchandise ?<select id="x_item"><option value="">Choisir…</option>'+types.map(function(c){return '<option'+(c===e.item?' selected':'')+'>'+esc(c)+'</option>'}).join("")+'</select></label>'+
    '<div class="grid2"><label class="f">Nombre de pièces<input id="x_qty" type="number" min="0" inputmode="numeric" value="'+esc(e.qty)+'" placeholder="Ex. 50"></label><label class="f">Fournisseur<input id="x_supplier" type="text" value="'+esc(e.supplier||"")+'" placeholder="Ex. AliExpress, Chine"></label></div><div class="s" id="x_unit" style="color:var(--muted);font-size:13px"></div></div>'+
    '<label class="f">Montant payé (F)<input id="x_amount" type="number" min="0" inputmode="numeric" value="'+esc(e.amount)+'"></label>'+
-   '<label class="f" id="x_chan"'+(isM?' hidden':'')+'>Canal concerné (pour une pub par exemple)<select id="x_channel"><option value="">Aucun</option>'+CHANNELS.map(function(c){return '<option'+(c===e.channel?' selected':'')+'>'+esc(c)+'</option>'}).join("")+'</select></label>'+
+   '<label class="f" id="x_chan"'+(noCh?' hidden':'')+'>Canal concerné<select id="x_channel"><option value="">Aucun</option>'+CHANNELS.map(function(c){return '<option'+(c===e.channel?' selected':'')+'>'+esc(c)+'</option>'}).join("")+'</select></label>'+
    '<label class="f">Note<input id="x_note" type="text" value="'+esc(e.note||"")+'" placeholder="Ex. commande n°12, pub Facebook, sachets"></label>'+
    '<div class="row">'+(id?'<button class="btn danger" data-act="delexp" data-id="'+id+'" data-confirm="Supprimer cette dépense ?">Supprimer</button>':'')+'<span class="grow"></span><button class="btn" data-act="close">Annuler</button><button class="btn primary" data-act="saveexp" data-id="'+(id||"")+'">Enregistrer</button></div>');
   updateUnit();
@@ -334,7 +335,7 @@ var saveExpense=guard(function(id){
   var amount=parseFloat($("#x_amount").value);if(!(amount>0)){toast("Indiquez un montant.");return}
   var cat=$("#x_cat").value,d={date:$("#x_date").value||today(),category:cat,amount:amount,channel:"",note:$("#x_note").value.trim()};
   if(cat===MARCH){var it=$("#x_item").value;if(!it){toast("Choisissez le type de marchandise.");return}d.item=it;d.qty=parseInt($("#x_qty").value,10)||0;d.supplier=$("#x_supplier").value.trim()}
-  else d.channel=$("#x_channel").value;
+  else if(cat!==META)d.channel=$("#x_channel").value;
   return put("expenses",id||uid("x"),d).then(function(){closeSheet();toast("Dépense enregistrée.")});
 });
 var delExpense=guard(function(id){return del("expenses",id).then(function(){closeSheet()})});
@@ -529,7 +530,7 @@ document.addEventListener("input",function(e){
   if(e.target.closest&&e.target.closest("#rows")||e.target.id==="o_fee")updateTotals();
 });
 document.addEventListener("change",function(e){
-  if(e.target.id==="x_cat"){var m=e.target.value===MARCH;$("#x_march").hidden=!m;$("#x_chan").hidden=m;return}
+  if(e.target.id==="x_cat"){var m=e.target.value===MARCH;$("#x_march").hidden=!m;$("#x_chan").hidden=m||e.target.value===META;return}
   if(e.target.id==="p_cat"){var cur=readSizes();$("#sizes").innerHTML=sizeRows(e.target.value,cur);return}
   if(e.target.id==="p_file"){var f=e.target.files&&e.target.files[0];if(f)uploadPhoto(f);e.target.value="";return}
   if(e.target.id==="yearSel"){var yv=e.target.value,cm=month.length===7?month.slice(5):"";month=yv==="all"?"all":yv+(cm?"-"+cm:"");render();return}
