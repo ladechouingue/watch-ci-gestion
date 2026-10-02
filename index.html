@@ -157,7 +157,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=12;
+var PAGE_V=13;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -370,8 +370,8 @@ function newOrderSheet(){
   openSheet('<h2>Nouvelle commande</h2><div class="grid2"><label class="f">Date<input id="o_date" type="date" value="'+today()+'"></label><label class="f">Le client vient de<select id="o_channel">'+CHANNELS.map(function(c){return '<option>'+esc(c)+'</option>'}).join("")+'</select></label></div>'+
    '<div class="grid2"><label class="f">Nom du client<input id="o_name" type="text" autocomplete="off"></label><label class="f">Téléphone<input id="o_phone" type="tel" inputmode="tel"></label></div>'+
    '<div id="rows" style="display:flex;flex-direction:column;gap:8px">'+itemRowHtml()+'</div><button class="btn small" data-act="addrow" type="button" style="align-self:flex-start">+ Ajouter un article</button>'+
+   '<label class="f">Coût de la livraison (F) — mettre 0 s\'il n\'y en a pas<input id="o_fee" type="number" min="0" inputmode="numeric" placeholder="0"></label>'+
    '<label class="row" style="gap:8px"><input id="o_mine" type="checkbox" style="width:auto"> Livraison à ma charge <span class="s" style="color:var(--muted);font-size:13px">(sinon payée par le client)</span></label>'+
-   '<label class="f" id="o_feewrap" hidden>Frais de livraison que je paie (F)<input id="o_fee" type="number" min="0" value="0" inputmode="numeric"></label>'+
    '<label class="f">Note<input id="o_note" type="text"></label>'+
    '<label class="row" style="gap:8px"><input id="o_paid" type="checkbox" style="width:auto"> Commande déjà payée</label>'+
    '<div class="card"><div class="sum"><span>Total</span><b class="num" id="o_total">0 F</b></div><div class="sum"><span>Bénéfice estimé</span><b class="num" id="o_profit">0 F</b></div></div>'+
@@ -391,8 +391,9 @@ var saveOrder=guard(function(){
   var rows=readRows().filter(function(r){return r.p&&r.qty>0});
   if(!rows.length){toast("Choisissez au moins un article.");return}
   var name=$("#o_name").value.trim();if(!name){toast("Indiquez le nom du client.");return}
+  if($("#o_fee").value.trim()===""){toast("Indiquez le coût de la livraison (0 s'il n'y en a pas).");return}
   var items=rows.map(function(r){return {pid:r.pid,label:label(r.p),qty:r.qty,price:isNaN(r.price)?r.p.price:r.price,cost:r.p.cost||0}});
-  var o={date:$("#o_date").value||today(),customer:name,phone:$("#o_phone").value.trim(),channel:$("#o_channel").value,items:items,fee:$("#o_mine").checked?(parseFloat($("#o_fee").value)||0):0,paid:$("#o_paid").checked,note:$("#o_note").value.trim(),status:"a_livrer",createdAt:new Date().toISOString()};
+  var o={date:$("#o_date").value||today(),customer:name,phone:$("#o_phone").value.trim(),channel:$("#o_channel").value,items:items,dcost:parseFloat($("#o_fee").value)||0,fee:$("#o_mine").checked?(parseFloat($("#o_fee").value)||0):0,paid:$("#o_paid").checked,note:$("#o_note").value.trim(),status:"a_livrer",createdAt:new Date().toISOString()};
   var id=uid("o");
   return api("save",{coll:"orders",id:id,data:o}).then(function(){return adjustStock(items,-1)}).then(function(){closeSheet();toast("Commande enregistrée.")});
 });
@@ -409,7 +410,7 @@ function orderSheet(id){
    '<div class="s" style="color:var(--muted)">'+esc(dateLabel(o.date))+' · '+esc(o.channel||"")+(o.phone?' · '+esc(o.phone):'')+(wa?' · <a href="https://wa.me/'+wa+'" target="_blank" rel="noopener">WhatsApp</a>':'')+'</div>'+
    '<div class="card"><div class="list">'+(o.items||[]).map(function(i){return '<div class="item">'+thumb(pById(i.pid),"sm")+'<div class="grow"><div class="t">'+esc(i.label)+'</div><div class="s">'+i.qty+' × '+F(i.price)+'</div></div><div class="num">'+F(i.qty*i.price)+'</div></div>'}).join("")+'</div>'+
    '<div class="sum" style="margin-top:8px"><span>Total</span><b class="num">'+F(c.rev)+'</b></div>'+
-   (o.fee?'<div class="sum"><span>Livraison à ma charge</span><span class="num">− '+F(o.fee)+'</span></div>':'<div class="sum"><span>Livraison</span><span>Payée par le client</span></div>')+
+   (o.fee?'<div class="sum"><span>Livraison à ma charge</span><span class="num">− '+F(o.fee)+'</span></div>':'<div class="sum"><span>Livraison payée par le client</span><span class="num">'+F(o.dcost||0)+'</span></div>')+
    '<div class="sum"><span>Bénéfice</span><b class="num">'+F(c.profit)+'</b></div>'+
    '<div class="sum"><span>Paiement</span><span class="pill '+(o.paid?'good':'bad')+'">'+(o.paid?'Payé':'Non payé')+'</span></div></div>'+
    (o.note?'<div class="card">'+esc(o.note)+'</div>':'')+
@@ -530,7 +531,6 @@ document.addEventListener("click",function(e){
 document.addEventListener("input",function(e){
   if(e.target.id==="search"){q=e.target.value;render();return}
   if(e.target.id==="x_amount"||e.target.id==="x_qty"){updateUnit();return}
-  if(e.target.id==="o_mine"){$("#o_feewrap").hidden=!e.target.checked}
   if(e.target.closest&&e.target.closest("#rows")||e.target.id==="o_fee"||e.target.id==="o_mine")updateTotals();
 });
 document.addEventListener("change",function(e){
