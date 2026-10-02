@@ -157,7 +157,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=14;
+var PAGE_V=15;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -229,17 +229,17 @@ function viewHome(){
   var cashIn=0,fees=0;inM.forEach(function(o){if(o.paid)cashIn+=calc(o).rev;fees+=o.fee||0});var cash=cashIn-fees-expTot-expMarch;
   inM.forEach(function(o){var c=calc(o);rev+=c.rev;profit+=c.profit;units+=c.qty;if(!o.paid)due+=c.rev});
   var stockValue=products.reduce(function(s,p){return s+Math.max(0,p.stock||0)*(p.cost||0)},0);
-  var net=profit-expTot;
+  var feeTot=0;inM.forEach(function(o){feeTot+=o.fee||0});var net=rev-feeTot-expTot-expMarch;
   var tiles='<div class="grid3">'+
    '<div class="card kpi"><span>Ventes</span><b>'+F(rev)+'</b><small>'+inM.length+' commande'+(inM.length>1?'s':'')+'</small></div>'+
    '<div class="card kpi"><span>Achats de marchandises</span><b>'+F(expMarch)+'</b><small>Payé aux fournisseurs</small></div>'+
    '<div class="card kpi"><span>Autres dépenses</span><b>'+F(expTot)+'</b><small>Pub Meta, emballage, outils…</small></div>'+
-   '<div class="card kpi main"><span>Bénéfice net</span><b style="'+(net<0?'color:var(--bad)':'')+'">'+F(net)+'</b><small>Marge '+F(profit)+' moins autres dépenses</small></div>'+
+   '<div class="card kpi main"><span>Bénéfice net</span><b style="'+(net<0?'color:var(--bad)':'')+'">'+F(net)+'</b><small>Ventes moins toutes les dépenses</small></div>'+
    '<div class="card kpi"><span>Reste en caisse</span><b style="'+(cash<0?'color:var(--bad)':'')+'">'+F(cash)+'</b><small>Encaissé moins tout ce qui est sorti</small></div>'+
    '<div class="card kpi"><span>À encaisser</span><b>'+F(due)+'</b><small>Commandes non payées</small></div></div>';
   // graphique 6 mois
   var ms=[];for(var i=5;i>=0;i--)ms.push(addMonths(base,-i));
-  var data=ms.map(function(k){var r=0,p=0;orders.forEach(function(o){if(active(o)&&(o.date||"").slice(0,7)===k){var c=calc(o);r+=c.rev;p+=c.profit}});expenses.forEach(function(e){if(isOpex(e)&&(e.date||"").slice(0,7)===k)p-=(e.amount||0)});return {k:k,r:r,p:p}});
+  var data=ms.map(function(k){var r=0,p=0;orders.forEach(function(o){if(active(o)&&(o.date||"").slice(0,7)===k){var c=calc(o);r+=c.rev;p+=c.rev-(o.fee||0)}});expenses.forEach(function(e){if((e.date||"").slice(0,7)===k)p-=(e.amount||0)});return {k:k,r:r,p:p}});
   var max=Math.max.apply(null,data.map(function(d){return Math.max(d.r,d.p)}).concat([1]));
   var W=320,H=150,top=16,bot=22,ch=H-top-bot,bw=22,step=W/6;
   var bars=data.map(function(d,i){
@@ -263,10 +263,10 @@ function viewHome(){
   var top5=Object.keys(tally).map(function(k){return [k,tally[k]]}).sort(function(a,b){return b[1]-a[1]}).slice(0,5);
   var best='<div class="card"><h2>Meilleures ventes</h2><div class="list" style="margin-top:6px">'+(top5.length?top5.map(function(t){return '<div class="item"><div class="grow t">'+esc(t[0])+'</div><div class="num">'+t[1]+' vendu'+(t[1]>1?'s':'')+'</div></div>'}).join(""):'<div class="empty">Aucune vente ce mois-ci.</div>')+'</div></div>';
   var ch={};CHANNELS.forEach(function(k){ch[k]={r:0,n:0,p:0}});
-  inM.forEach(function(o){var k=o.channel||"Autre";if(k==="Site watchcotedivoire.com")k="Site web";var c=calc(o);var e=ch[k]||(ch[k]={r:0,n:0,p:0});e.r+=c.rev;e.p+=c.profit;e.n++});
+  inM.forEach(function(o){var k=o.channel||"Autre";if(k==="Site watchcotedivoire.com")k="Site web";var c=calc(o);var e=ch[k]||(ch[k]={r:0,n:0,p:0});e.r+=c.rev;e.p+=c.rev-(o.fee||0);e.n++});
   exM.forEach(function(e){if(e.category===META){var h=(e.amount||0)/2;["Facebook","Instagram"].forEach(function(k){var t=ch[k]||(ch[k]={r:0,n:0,p:0});t.x=(t.x||0)+h});return}if(!e.channel||!isOpex(e))return;var k=e.channel;var t=ch[k]||(ch[k]={r:0,n:0,p:0});t.x=(t.x||0)+(e.amount||0)});
   var chK=Object.keys(ch).sort(function(a,b){return ch[b].r-ch[a].r||ch[b].n-ch[a].n}),chTot=chK.reduce(function(s,k){return s+ch[k].r},0)||1;
-  var orig='<div class="card"><div class="row" style="justify-content:space-between;margin-bottom:6px"><h2>Ventes par canal</h2><span class="s" style="color:var(--muted);font-size:13px">'+esc(periodLabel(month))+'</span></div><div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Canal</th><th>Cmd</th><th>Ventes</th><th>Bénéfice</th><th>Part</th></tr></thead><tbody>'+chK.map(function(k){var e=ch[k],pc=Math.round(e.r/chTot*100);return '<tr'+(e.n?'':' class="zero"')+'><td><b>'+esc(k)+'</b><div class="s" style="font-size:12px;color:var(--muted)">'+(e.n?'Panier '+F(e.r/e.n):'Aucune vente')+(e.x?' · Dépenses '+F(e.x)+' · Net '+F(e.p-e.x):'')+'</div><div class="bar"><i style="width:'+pc+'%"></i></div></td><td>'+e.n+'</td><td>'+F(e.r)+'</td><td>'+F(e.p)+'</td><td>'+pc+' %</td></tr>'}).join("")+'</tbody></table></div></div>';
+  var orig='<div class="card"><div class="row" style="justify-content:space-between;margin-bottom:6px"><h2>Ventes par canal</h2><span class="s" style="color:var(--muted);font-size:13px">'+esc(periodLabel(month))+'</span></div><div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Canal</th><th>Cmd</th><th>Ventes</th><th>Part</th></tr></thead><tbody>'+chK.map(function(k){var e=ch[k],pc=Math.round(e.r/chTot*100);return '<tr'+(e.n?'':' class="zero"')+'><td><b>'+esc(k)+'</b><div class="s" style="font-size:12px;color:var(--muted)">'+(e.n?'Panier '+F(e.r/e.n):'Aucune vente')+(e.x?' · Dépenses '+F(e.x)+' · Net '+F(e.p-e.x):'')+'</div><div class="bar"><i style="width:'+pc+'%"></i></div></td><td>'+e.n+'</td><td>'+F(e.r)+'</td><td>'+pc+' %</td></tr>'}).join("")+'</tbody></table></div></div>';
   var sv='<div class="card kpi"><span>Valeur du stock (au prix d\'achat)</span><b>'+F(stockValue)+'</b></div>';
   return '<div style="display:flex;flex-direction:column;gap:18px">'+tiles+chart+'<div class="cols">'+todo+lowC+'</div><div class="cols">'+best+sv+'</div>'+orig+'<div class="foot"><a href="api.php?r=export">Télécharger une sauvegarde</a><span>Version '+esc(appVersion||"?")+'</span><button class="linkbtn" data-act="chkupd">Vérifier les mises à jour</button><button class="linkbtn" data-act="rollback" data-confirm="Revenir à la version précédente ?">Version précédente</button></div></div>';
 }
@@ -374,7 +374,7 @@ function newOrderSheet(){
    '<label class="row" style="gap:8px"><input id="o_mine" type="checkbox" style="width:auto"> À ma charge <span class="s" style="color:var(--muted);font-size:13px">(décoché = payé par le client)</span></label>'+
    '<label class="f">Note<input id="o_note" type="text"></label>'+
    '<label class="row" style="gap:8px"><input id="o_paid" type="checkbox" style="width:auto"> Commande déjà payée</label>'+
-   '<div class="card"><div class="sum"><span>Total</span><b class="num" id="o_total">0 F</b></div><div class="sum"><span>Bénéfice estimé</span><b class="num" id="o_profit">0 F</b></div></div>'+
+   '<div class="card"><div class="sum"><span>Total</span><b class="num" id="o_total">0 F</b></div></div>'+
    '<div class="row"><button class="btn grow" data-act="close" type="button">Annuler</button><button class="btn primary grow" data-act="saveorder" type="button">Enregistrer</button></div>');
 }
 function readRows(){
@@ -411,7 +411,6 @@ function orderSheet(id){
    '<div class="card"><div class="list">'+(o.items||[]).map(function(i){return '<div class="item">'+thumb(pById(i.pid),"sm")+'<div class="grow"><div class="t">'+esc(i.label)+'</div><div class="s">'+i.qty+' × '+F(i.price)+'</div></div><div class="num">'+F(i.qty*i.price)+'</div></div>'}).join("")+'</div>'+
    '<div class="sum" style="margin-top:8px"><span>Total</span><b class="num">'+F(c.rev)+'</b></div>'+
    (o.fee?'<div class="sum"><span>Livraison à ma charge</span><span class="num">− '+F(o.fee)+'</span></div>':'<div class="sum"><span>Livraison payée par le client</span><span class="num">'+F(o.dcost||0)+'</span></div>')+
-   '<div class="sum"><span>Bénéfice</span><b class="num">'+F(c.profit)+'</b></div>'+
    '<div class="sum"><span>Paiement</span><span class="pill '+(o.paid?'good':'bad')+'">'+(o.paid?'Payé':'Non payé')+'</span></div></div>'+
    (o.note?'<div class="card">'+esc(o.note)+'</div>':'')+
    '<div class="row">'+
