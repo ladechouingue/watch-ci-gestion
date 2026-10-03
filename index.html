@@ -126,6 +126,14 @@ a{color:var(--accent)}
 .err{color:var(--bad);font-size:14px;min-height:20px}
 .linkbtn{background:none;border:0;padding:0;color:var(--accent);text-decoration:underline;font-size:13px}
 .foot{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;font-size:13px;color:var(--muted)}
+.stockgrid{display:grid;grid-template-columns:1fr;gap:14px;align-items:start}
+@media(min-width:1000px){
+  .wrap{max-width:1180px}
+  .stockgrid{grid-template-columns:repeat(3,1fr)}
+  .kpi b{font-size:26px}
+  h1{font-size:26px}
+}
+@media(min-width:760px) and (max-width:999px){.stockgrid{grid-template-columns:1fr 1fr}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -157,7 +165,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=16;
+var PAGE_V=17;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -241,7 +249,7 @@ function viewHome(){
   var ms=[];for(var i=5;i>=0;i--)ms.push(addMonths(base,-i));
   var data=ms.map(function(k){var r=0,p=0;orders.forEach(function(o){if(active(o)&&(o.date||"").slice(0,7)===k){var c=calc(o);r+=c.rev;p+=c.rev-(o.fee||0)}});expenses.forEach(function(e){if((e.date||"").slice(0,7)===k)p-=(e.amount||0)});return {k:k,r:r,p:p}});
   var max=Math.max.apply(null,data.map(function(d){return Math.max(d.r,d.p)}).concat([1]));
-  var W=320,H=150,top=16,bot=22,ch=H-top-bot,bw=22,step=W/6;
+  var W=Math.max(320,Math.min(1100,((document.getElementById("app")||{}).clientWidth||360)-60)),H=150,top=16,bot=22,ch=H-top-bot,step=W/6,bw=Math.max(22,Math.min(46,Math.floor((step-11)/2)));
   var bars=data.map(function(d,i){
     var x=i*step+(step-bw*2-3)/2, hr=d.r/max*ch, hp=Math.max(0,d.p)/max*ch;
     var short=function(n){return n>=1e6?(n/1e6).toFixed(1).replace(".0","")+" M":n>=1000?Math.round(n/1000)+" k":String(Math.round(n))};
@@ -300,7 +308,7 @@ function viewStock(){
   }).join("");
   return '<div style="display:flex;flex-direction:column;gap:14px"><div class="row"><h2 class="grow">Stock</h2><button class="btn primary" data-act="newp">+ Nouveau produit</button></div>'+
    '<input id="search" type="search" placeholder="Chercher un modèle, une taille, une couleur" value="'+esc(q)+'">'+
-   (cards||'<div class="card"><div class="empty">Aucun produit. Ajoutez votre premier article avec « Nouveau produit ».</div></div>')+'</div>';
+   (cards?'<div class="stockgrid">'+cards+'</div>':'<div class="card"><div class="empty">Aucun produit. Ajoutez votre premier article avec « Nouveau produit ».</div></div>')+'</div>';
 }
 function viewExpenses(){
   var list=expenses.filter(function(e){return inRange(e.date)}).sort(function(a,b){return (b.date||"")>(a.date||"")?1:(b.date===a.date?(b.id>a.id?1:-1):-1)});
@@ -311,7 +319,7 @@ function viewExpenses(){
   var tk=Object.keys(byT).sort(function(a,b){return byT[b]-byT[a]});
   var types=tk.length?'<div class="card"><h2>Marchandises par type</h2><div class="list" style="margin-top:6px">'+tk.map(function(k){var pc=Math.round(byT[k]/(march||1)*100);return '<div class="item" style="flex-direction:column;align-items:stretch;gap:6px"><div class="row" style="justify-content:space-between;flex-wrap:nowrap"><span class="t">'+esc(k)+(qT[k]?' <span class="s">· '+qT[k]+' pièces</span>':'')+'</span><span class="num">'+F(byT[k])+'</span></div><div style="height:6px;border-radius:99px;background:var(--line)"><div style="height:100%;width:'+pc+'%;border-radius:99px;background:var(--accent)"></div></div></div>'}).join("")+'</div></div>':"";
   var cats=ks.length?'<div class="card"><h2>Par catégorie</h2><div class="list" style="margin-top:6px">'+ks.map(function(k){var pc=Math.round(by[k]/(tot||1)*100);return '<div class="item" style="flex-direction:column;align-items:stretch;gap:6px"><div class="row" style="justify-content:space-between;flex-wrap:nowrap"><span class="t">'+esc(k)+'</span><span class="num">'+F(by[k])+' <span class="s">· '+pc+' %</span></span></div><div style="height:6px;border-radius:99px;background:var(--line)"><div style="height:100%;width:'+pc+'%;border-radius:99px;background:var(--accent)"></div></div></div>'}).join("")+'</div></div>':"";
-  cats=types+cats;
+  cats='<div class="cols" style="align-items:start">'+types+cats+'</div>';
   return '<div style="display:flex;flex-direction:column;gap:14px"><div class="row"><h2 class="grow">Dépenses</h2><button class="btn primary" data-act="newexp">+ Nouvelle dépense</button></div>'+
    '<div class="grid2"><div class="card kpi"><span>Total sorti</span><b>'+F(tot)+'</b><small>'+esc(periodLabel(month))+'</small></div><div class="card kpi"><span>Dont marchandises</span><b>'+F(march)+'</b><small>'+Math.round(march/(tot||1)*100)+' % des sorties</small></div></div>'+cats+
    '<div class="card"><div class="list">'+(list.length?list.map(function(e){return '<button class="item clickable" data-act="editexp" data-id="'+e.id+'"><div class="grow"><div class="t">'+(isOpex(e)?esc(e.category||"Autre"):'Marchandises · '+esc(e.item||"Non précisé")+(e.qty?' · '+e.qty+' pièces':''))+(e.note?' · '+esc(e.note):'')+'</div><div class="s">'+esc(dateLabel(e.date))+(isOpex(e)?(e.channel?' · '+esc(e.channel):''):(e.supplier?' · '+esc(e.supplier):''))+'</div></div><div class="num">'+F(e.amount)+'</div></button>'}).join(""):'<div class="empty">Aucune dépense sur cette période. Ajoutez la publicité, les emballages, les outils…</div>')+'</div></div>'+
@@ -568,6 +576,7 @@ function boot(){
   $("#main").innerHTML='<div class="empty">Chargement…</div>';
   refresh().then(function(){checkUpdate(false)}).catch(function(e){toast(e.message)});
 }
+var rzT=null;window.addEventListener("resize",function(){clearTimeout(rzT);rzT=setTimeout(function(){if(authed&&tab==="home"&&!$("#layer").children.length)render()},250)});
 document.addEventListener("visibilitychange",function(){if(!document.hidden&&authed&&!$("#layer").children.length)refresh().catch(function(){})});
 api("status").then(function(st){
   appVersion=st.version||"";
