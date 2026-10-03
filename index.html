@@ -157,7 +157,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=15;
+var PAGE_V=16;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -228,7 +228,7 @@ function viewHome(){
   var exM=expenses.filter(function(e){return inRange(e.date)}),expTot=exM.filter(isOpex).reduce(function(s,e){return s+(e.amount||0)},0),expMarch=exM.filter(function(e){return !isOpex(e)}).reduce(function(s,e){return s+(e.amount||0)},0);
   var cashIn=0,fees=0;inM.forEach(function(o){if(o.paid)cashIn+=calc(o).rev;fees+=o.fee||0});var cash=cashIn-fees-expTot-expMarch;
   inM.forEach(function(o){var c=calc(o);rev+=c.rev;profit+=c.profit;units+=c.qty;if(!o.paid)due+=c.rev});
-  var stockValue=products.reduce(function(s,p){return s+Math.max(0,p.stock||0)*(p.cost||0)},0);
+  var stockValue=products.reduce(function(s,p){return s+Math.max(0,p.stock||0)*(p.price||0)},0);
   var feeTot=0;inM.forEach(function(o){feeTot+=o.fee||0});var net=rev-feeTot-expTot-expMarch;
   var tiles='<div class="grid3">'+
    '<div class="card kpi"><span>Ventes</span><b>'+F(rev)+'</b><small>'+inM.length+' commande'+(inM.length>1?'s':'')+'</small></div>'+
@@ -267,7 +267,7 @@ function viewHome(){
   exM.forEach(function(e){if(e.category===META){var h=(e.amount||0)/2;["Facebook","Instagram"].forEach(function(k){var t=ch[k]||(ch[k]={r:0,n:0,p:0});t.x=(t.x||0)+h});return}if(!e.channel||!isOpex(e))return;var k=e.channel;var t=ch[k]||(ch[k]={r:0,n:0,p:0});t.x=(t.x||0)+(e.amount||0)});
   var chK=Object.keys(ch).sort(function(a,b){return ch[b].r-ch[a].r||ch[b].n-ch[a].n}),chTot=chK.reduce(function(s,k){return s+ch[k].r},0)||1;
   var orig='<div class="card"><div class="row" style="justify-content:space-between;margin-bottom:6px"><h2>Ventes par canal</h2><span class="s" style="color:var(--muted);font-size:13px">'+esc(periodLabel(month))+'</span></div><div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Canal</th><th>Cmd</th><th>Ventes</th><th>Part</th></tr></thead><tbody>'+chK.map(function(k){var e=ch[k],pc=Math.round(e.r/chTot*100);return '<tr'+(e.n?'':' class="zero"')+'><td><b>'+esc(k)+'</b><div class="s" style="font-size:12px;color:var(--muted)">'+(e.n?'Panier '+F(e.r/e.n):'Aucune vente')+(e.x?' · Dépenses '+F(e.x)+' · Net '+F(e.p-e.x):'')+'</div><div class="bar"><i style="width:'+pc+'%"></i></div></td><td>'+e.n+'</td><td>'+F(e.r)+'</td><td>'+pc+' %</td></tr>'}).join("")+'</tbody></table></div></div>';
-  var sv='<div class="card kpi"><span>Valeur du stock (au prix d\'achat)</span><b>'+F(stockValue)+'</b></div>';
+  var sv='<div class="card kpi"><span>Valeur du stock (au prix de vente)</span><b>'+F(stockValue)+'</b></div>';
   return '<div style="display:flex;flex-direction:column;gap:18px">'+tiles+chart+'<div class="cols">'+todo+lowC+'</div><div class="cols">'+best+sv+'</div>'+orig+'<div class="foot"><a href="api.php?r=export">Télécharger une sauvegarde</a><span>Version '+esc(appVersion||"?")+'</span><button class="linkbtn" data-act="chkupd">Vérifier les mises à jour</button><button class="linkbtn" data-act="rollback" data-confirm="Revenir à la version précédente ?">Version précédente</button></div></div>';
 }
 function stockPill(p){var s=p.stock||0;return s<=0?'<span class="pill bad">Rupture</span>':s<=(p.alert==null?3:p.alert)?'<span class="pill warn">'+s+' en stock</span>':'<span class="pill good">'+s+' en stock</span>'}
@@ -294,8 +294,8 @@ function viewStock(){
   var ql=q.toLowerCase();
   var gs=groups().filter(function(g){return !ql||(g.base.name+" "+(g.base.color||"")+" "+(g.base.category||"")+" "+g.items.map(function(p){return p.size}).join(" ")).toLowerCase().indexOf(ql)>=0});
   var cards=gs.map(function(g){
-    var b=g.base,m=b.price-b.cost,flag=g.items.some(function(p){return (p.stock||0)<=(p.alert==null?3:p.alert)});
-    return '<div class="card"><div class="item" style="padding-top:0"><button class="clickable" style="width:auto" data-act="editp" data-g="'+g.g+'" aria-label="Modifier">'+thumb(b)+'</button><button class="grow clickable" data-act="editp" data-g="'+g.g+'"><div class="t">'+esc(b.name)+'</div><div class="s">'+esc([b.category,b.color].filter(Boolean).join(" · "))+'</div><div class="s">Achat '+F(b.cost)+' · Vente '+F(b.price)+' · Marge '+F(m)+'</div></button><span class="pill '+(flag?'warn':'good')+'">'+g.total+' au total</span></div>'+
+    var b=g.base,flag=g.items.some(function(p){return (p.stock||0)<=(p.alert==null?3:p.alert)});
+    return '<div class="card"><div class="item" style="padding-top:0"><button class="clickable" style="width:auto" data-act="editp" data-g="'+g.g+'" aria-label="Modifier">'+thumb(b)+'</button><button class="grow clickable" data-act="editp" data-g="'+g.g+'"><div class="t">'+esc(b.name)+'</div><div class="s">'+esc([b.category,b.color].filter(Boolean).join(" · "))+'</div><div class="s">Prix de vente '+F(b.price)+'</div></button><span class="pill '+(flag?'warn':'good')+'">'+g.total+' au total</span></div>'+
       g.items.map(function(p){return '<div class="vrow"><span class="t">'+(p.size?esc(p.size)+' MM':'Taille unique')+'</span><span style="display:flex;gap:10px;align-items:center">'+((p.stock||0)<=0?'<span class="pill bad">Rupture</span>':(p.stock||0)<=(p.alert==null?3:p.alert)?'<span class="pill warn">Faible</span>':'')+'<span class="stepper"><button data-act="adj" data-id="'+p.id+'" data-d="-1" aria-label="Retirer un">−</button><span class="num">'+(p.stock||0)+'</span><button data-act="adj" data-id="'+p.id+'" data-d="1" aria-label="Ajouter un">+</button></span></span></div>'}).join("")+'</div>';
   }).join("");
   return '<div style="display:flex;flex-direction:column;gap:14px"><div class="row"><h2 class="grow">Stock</h2><button class="btn primary" data-act="newp">+ Nouveau produit</button></div>'+
@@ -447,7 +447,7 @@ function productSheet(arg){
    '<div class="photo"><div class="thumb" id="p_prev">'+(b.photo?'<img alt="" src="'+esc(b.photo)+'">':'Photo')+'</div><div style="display:flex;flex-direction:column;gap:6px"><label class="btn small" style="text-align:center">Prendre ou choisir une photo<input id="p_file" type="file" accept="image/*" hidden></label><span id="p_ph_msg" style="color:var(--muted);font-size:13px">Photo réelle de l\'article</span></div></div>'+
    '<label class="f">Modèle<input id="p_name" type="text" value="'+esc(b.name)+'" placeholder="Ex. Bracelet Boucle Nylon"></label>'+
    '<div class="grid2"><label class="f">Catégorie<select id="p_cat">'+cats.map(function(c){return '<option'+(c===b.category?' selected':'')+'>'+esc(c)+'</option>'}).join("")+'</select></label><label class="f">Couleur<input id="p_color" type="text" value="'+esc(b.color||"")+'"></label></div>'+
-   '<div class="grid2"><label class="f">Prix d\'achat (F)<input id="p_cost" type="number" min="0" value="'+esc(b.cost)+'" inputmode="numeric"></label><label class="f">Prix de vente (F)<input id="p_price" type="number" min="0" value="'+esc(b.price)+'" inputmode="numeric"></label></div>'+
+   '<label class="f">Prix de vente (F)<input id="p_price" type="number" min="0" value="'+esc(b.price)+'" inputmode="numeric"></label>'+
    '<div class="card"><h3>Tailles et stock</h3><p style="margin:4px 0 8px;color:var(--muted);font-size:13px">Cochez les tailles que vous vendez pour ce modèle et indiquez le stock de chacune. Décocher une taille la supprime.</p><div id="sizes">'+sizeRows(b.category,state)+'</div><div class="row" style="margin-top:8px"><input id="p_newsize" type="text" placeholder="Autre taille (ex. 47)" style="flex:1"><button class="btn small" data-act="addsize" type="button">Ajouter</button></div></div>'+
    '<label class="f">Alerte quand une taille atteint ce stock<input id="p_alert" type="number" min="0" value="'+(b.alert==null?3:b.alert)+'" inputmode="numeric"></label>'+
    '<div class="row">'+(g?'<button class="btn danger" data-act="delp" data-confirm="Supprimer ce produit ?">Supprimer</button>':'')+'<span class="grow"></span><button class="btn" data-act="close">Annuler</button><button class="btn primary" data-act="savep">Enregistrer</button></div>');
@@ -457,7 +457,7 @@ var saveProduct=guard(function(){
   var st=readSizes(),chosen=Object.keys(st).filter(function(k){return st[k].on});
   if(!chosen.length){toast("Cochez au moins une taille.");return}
   var alertV=parseInt($("#p_alert").value,10);if(isNaN(alertV))alertV=3;
-  var shared={name:name,category:$("#p_cat").value,color:$("#p_color").value.trim(),cost:parseFloat($("#p_cost").value)||0,price:parseFloat($("#p_price").value)||0,alert:alertV};
+  var shared={name:name,category:$("#p_cat").value,color:$("#p_color").value.trim(),price:parseFloat($("#p_price").value)||0,alert:alertV};
   var ph=pendingPhoto||curGroup.photo;
   var bySize={};curGroup.items.forEach(function(p){var k=nSize(p.size);if(!bySize[k])bySize[k]=p});
   var chain=Promise.resolve();
