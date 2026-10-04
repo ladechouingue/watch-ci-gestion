@@ -355,6 +355,15 @@ switch ($r) {
         out(['ok' => true]);
     }
 
+    case 'cat_rename': {
+        if (!$isPost) { fail('POST requis.', 405); }
+        $b = body(); $f = (string)($b['file'] ?? ''); $label = mb_substr(trim((string)($b['label'] ?? '')), 0, 80);
+        if (!catOk($f) || !is_file($upDir . '/catalogues/' . $f)) { fail('Catalogue introuvable.'); }
+        if ($label === '') { fail('Indiquez un nom.'); }
+        setSetting($pdo, 'catlabel:' . $f, $label);
+        out(['ok' => true]);
+    }
+
     case 'cat_delete': {
         if (!$isPost) { fail('POST requis.', 405); }
         $f = (string)(body()['file'] ?? '');

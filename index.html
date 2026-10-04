@@ -165,7 +165,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=18;
+var PAGE_V=19;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -381,7 +381,7 @@ function catSheet(msg){
       return '<div class="item" style="flex-direction:column;align-items:stretch;gap:8px"><div class="row" style="justify-content:space-between;flex-wrap:nowrap"><span class="t">'+esc(c.label)+'</span><span class="s">'+catSize(c.size)+'</span></div>'+
         '<div class="row"><a class="btn small primary" href="uploads/catalogues/'+esc(c.file)+'" download="'+esc(c.label.replace(/[\/\\:*?"<>|·]/g," ").replace(/\s+/g," ").trim())+'.pdf">Télécharger</a>'+
         '<button class="btn small" data-act="catshare" data-f="'+esc(c.file)+'" data-l="'+esc(c.label)+'">Partager</button>'+
-        '<span class="grow"></span><button class="btn small danger" data-act="catdel" data-f="'+esc(c.file)+'" data-confirm="Supprimer ?">Supprimer</button></div></div>'}).join(""):'<div class="empty">Aucun catalogue pour le moment.</div>';
+        '<button class="btn small" data-act="catren" data-f="'+esc(c.file)+'" data-l="'+esc(c.label)+'">Renommer</button><span class="grow"></span><button class="btn small danger" data-act="catdel" data-f="'+esc(c.file)+'" data-confirm="Supprimer ?">Supprimer</button></div></div>'}).join(""):'<div class="empty">Aucun catalogue pour le moment.</div>';
     openSheet('<h2>Catalogues</h2><div class="list">'+rows+'</div>'+
       '<div class="card" style="display:flex;flex-direction:column;gap:8px"><h3>Ajouter un catalogue</h3>'+
       '<label class="f">Nom<input id="c_label" type="text" placeholder="Ex. 42/44/45/46/49 MM · 5 000 F"></label>'+
@@ -564,6 +564,11 @@ document.addEventListener("click",function(e){
     case "catshare":shareCat(b.dataset.f,b.dataset.l);break;
     case "catdel":api("cat_delete",{file:b.dataset.f}).then(function(){toast("Catalogue supprimé.");catSheet()}).catch(function(e){toast(e.message)});break;
     case "catadd":addCat(b);break;
+    case "catren":{var it=b.closest(".item"),hd=it.firstChild;
+      hd.innerHTML='<input class="catnew" type="text" maxlength="80" value="'+esc(b.dataset.l)+'" style="flex:1"><button class="btn small primary" data-act="catren_ok" data-f="'+esc(b.dataset.f)+'">OK</button>';
+      var inp=hd.querySelector("input");inp.focus();inp.select();break}
+    case "catren_ok":{var nm=b.parentNode.querySelector("input").value.trim();if(!nm){toast("Indiquez un nom.");break}
+      api("cat_rename",{file:b.dataset.f,label:nm}).then(function(){toast("Nom modifié.");catSheet()}).catch(function(e){toast(e.message)});break}
     case "editp":productSheet(id||b.dataset.g);break;
     case "savep":saveProduct();break;
     case "delp":delGroup();break;
