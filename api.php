@@ -76,6 +76,18 @@ function rrmdir(string $d): void {
     @rmdir($d);
 }
 
+function catOk(string $f): bool { return (bool)preg_match('/^[A-Za-z0-9_-]{1,60}\.pdf$/', $f); }
+function catList(PDO $pdo, string $dir): array {
+    $rows = [];
+    foreach (glob($dir . '/*.pdf') ?: [] as $f) {
+        $b = basename($f);
+        $rows[] = ['file' => $b, 'label' => setting($pdo, 'catlabel:' . $b) ?? preg_replace('/\.pdf$/i', '', $b),
+                   'size' => (int)filesize($f), 'ord' => (int)(setting($pdo, 'catord:' . $b) ?? filemtime($f))];
+    }
+    usort($rows, function ($a, $b) { return $a['ord'] <=> $b['ord']; });
+    return $rows;
+}
+
 $r = $_GET['r'] ?? '';
 $isPost = $_SERVER['REQUEST_METHOD'] === 'POST';
 if ($isPost && ($_SERVER['HTTP_X_GESTION'] ?? '') !== '1') { fail('Requête refusée.', 403); }
@@ -294,6 +306,63 @@ switch ($r) {
             if (function_exists('opcache_invalidate')) { @opcache_invalidate($dest, true); }
         }
         out(['ok' => true, 'version' => localVersion()]);
+    }
+
+    case 'catalogues': {
+        $dir = $upDir . '/catalogues';
+        $list = catList($pdo, $dir);
+        $seed = 0;
+        if (!$list && setting($pdo, 'cat_seeded') === null) { $seed = 1; }
+        out(['catalogues' => $list, 'seed' => $seed]);
+    }
+
+    case 'cat_seed': {
+        if (!$isPost) { fail('POST requis.', 405); }
+        $i = (int)(body()['i'] ?? 0);
+        $base = 'https://raw.githubusercontent.com/' . UPDATE_REPO . '/' . UPDATE_BRANCH . '/catalogues-initial/';
+        [$code, $man] = httpGet($base . 'manifest.json', [], 30);
+        $m = json_decode($man, true);
+        if ($code !== 200 || !is_array($m)) { fail('Catalogues d\'origine introuvables (code ' . $code . ').', 502); }
+        if (!isset($m[$i])) { setSetting($pdo, 'cat_seeded', '1'); out(['done' => true, 'total' => count($m)]); }
+        $f = (string)($m[$i]['file'] ?? ''); $label = (string)($m[$i]['label'] ?? $f);
+        if (!catOk($f)) { fail('Nom de fichier invalide.', 500); }
+        $dir = $upDir . '/catalogues'; if (!is_dir($dir)) { @mkdir($dir, 0755, true); }
+        if (!is_file($dir . '/' . $f)) {
+            [$c2, $pdf] = httpGet($base . $f, [], 120);
+            if ($c2 !== 200 || strncmp($pdf, '%PDF', 4) !== 0) { fail('Téléchargement impossible pour « ' . $label . ' » (code ' . $c2 . ').', 502); }
+            if (file_put_contents($dir . '/' . $f, $pdf) === false) { fail('Écriture impossible dans le dossier uploads.', 500); }
+            setSetting($pdo, 'catlabel:' . $f, $label); setSetting($pdo, 'catord:' . $f, (string)(1000 + $i));
+        }
+        $last = !isset($m[$i + 1]); if ($last) { setSetting($pdo, 'cat_seeded', '1'); }
+        out(['done' => $last, 'next' => $i + 1, 'total' => count($m)]);
+    }
+
+    case 'cat_upload': {
+        if (!$isPost) { fail('POST requis.', 405); }
+        if (empty($_FILES['pdf']) || $_FILES['pdf']['error'] !== UPLOAD_ERR_OK) { fail('Fichier non reçu (trop lourd pour l\'hébergement ?).'); }
+        $tmp = $_FILES['pdf']['tmp_name'];
+        if ($_FILES['pdf']['size'] > 40 * 1024 * 1024) { fail('Fichier trop lourd (40 Mo maximum).'); }
+        $fh = @fopen($tmp, 'rb'); $magic = $fh ? (string)fread($fh, 4) : ''; if ($fh) { fclose($fh); }
+        if ($magic !== '%PDF') { fail('Ce fichier n\'est pas un PDF.'); }
+        $label = trim((string)($_POST['label'] ?? ''));
+        if ($label === '') { $label = preg_replace('/\.pdf$/i', '', (string)($_FILES['pdf']['name'] ?? 'Catalogue')); }
+        $label = mb_substr($label, 0, 80);
+        $dir = $upDir . '/catalogues'; if (!is_dir($dir)) { @mkdir($dir, 0755, true); }
+        $name = 'c' . bin2hex(random_bytes(8)) . '.pdf';
+        if (!move_uploaded_file($tmp, $dir . '/' . $name)) { fail('Écriture impossible dans le dossier uploads.', 500); }
+        setSetting($pdo, 'catlabel:' . $name, $label); setSetting($pdo, 'catord:' . $name, (string)time());
+        setSetting($pdo, 'cat_seeded', '1');
+        out(['ok' => true]);
+    }
+
+    case 'cat_delete': {
+        if (!$isPost) { fail('POST requis.', 405); }
+        $f = (string)(body()['file'] ?? '');
+        if (!catOk($f)) { fail('Fichier invalide.'); }
+        @unlink($upDir . '/catalogues/' . $f);
+        $pdo->prepare('DELETE FROM settings WHERE k IN (?,?)')->execute(['catlabel:' . $f, 'catord:' . $f]);
+        setSetting($pdo, 'cat_seeded', '1');
+        out(['ok' => true]);
     }
 
     default: fail('Route inconnue.', 404);
