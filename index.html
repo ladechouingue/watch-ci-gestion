@@ -167,7 +167,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=23;
+var PAGE_V=24;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -383,10 +383,8 @@ function catSheet(msg){
       var fe=esc(c.file),le=esc(c.label);
       return '<div class="item" style="flex-direction:column;align-items:stretch;gap:8px"><div class="row" style="justify-content:space-between;flex-wrap:nowrap"><span class="t">'+le+'</span><span class="s">'+catSize(c.size)+'</span></div>'+
         '<div class="row"><button class="btn small primary" data-act="catlink" data-f="'+fe+'">Copier le lien</button>'+
-        '<a class="btn small" href="uploads/catalogues/'+fe+'" download="'+esc(c.label.replace(/[\/\\:*?"<>|·]/g," ").replace(/\s+/g," ").trim())+'.pdf">Télécharger</a>'+
         '<button class="btn small" data-act="catshare" data-f="'+fe+'" data-l="'+le+'">Partager</button></div>'+
-        '<div class="row"><button class="btn small" data-act="catimg" data-f="'+fe+'" data-l="'+le+'">Images</button>'+
-        '<button class="btn small" data-act="catren" data-f="'+fe+'" data-l="'+le+'">Renommer</button>'+
+        '<div class="row"><button class="btn small" data-act="catren" data-f="'+fe+'" data-l="'+le+'">Renommer</button>'+
         '<span class="grow"></span><button class="btn small danger" data-act="catdel" data-f="'+fe+'" data-confirm="Supprimer ?">Supprimer</button></div></div>'
     }).join(""):'<div class="empty">Aucun catalogue pour le moment.</div>';
     openSheet('<h2>Catalogues</h2><div class="list">'+rows+'</div>'+
@@ -408,67 +406,14 @@ function addCat(btn){
   api("cat_upload",undefined,fd).then(function(){toast("Catalogue ajouté.");catSheet()}).catch(function(e){btn.disabled=false;btn.textContent="Ajouter";toast(e.message)});
 }
 function shareCat(f,l){
-  var url="uploads/catalogues/"+f,full=new URL(url,location.href).href,title="Watch Côte d'Ivoire · Catalogue "+l;
+  var url="uploads/catalogues/"+f,title="Watch Côte d'Ivoire · Catalogue "+l,name="Catalogue "+l.replace(/[\/\\:*?"<>|·]/g," ").replace(/\s+/g," ").trim()+".pdf";
+  var save=function(bl){var u=URL.createObjectURL(bl),a=document.createElement("a");a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(u)},4000);toast("Catalogue téléchargé.")};
   toast("Préparation…");
   fetch(url).then(function(r){return r.blob()}).then(function(bl){
-    var file=new File([bl],"Catalogue "+l.replace(/[\/\\:*?"<>|·]/g," ").replace(/\s+/g," ").trim()+".pdf",{type:"application/pdf"});
+    var file=new File([bl],name,{type:"application/pdf"});
     if(navigator.canShare&&navigator.canShare({files:[file]}))return navigator.share({files:[file],title:title});
-    if(navigator.share)return navigator.share({title:title,url:full});
-    return navigator.clipboard.writeText(full).then(function(){toast("Lien du catalogue copié.")});
-  }).catch(function(e){if(e&&e.name==="AbortError")return;toast("Partage impossible. Utilisez Télécharger.")});
-}
-/* ---------- Catalogue en images (pour Instagram) ---------- */
-var pdfReady=null,catImgs={label:"",files:[]};
-function loadPdfJs(){
-  if(pdfReady)return pdfReady;
-  pdfReady=new Promise(function(res,rej){var sc=document.createElement("script");sc.src="vendor/pdf.min.js?v="+PAGE_V;
-    sc.onload=function(){try{pdfjsLib.GlobalWorkerOptions.workerSrc="vendor/pdf.worker.min.js?v="+PAGE_V;res(pdfjsLib)}catch(e){pdfReady=null;rej(e)}};
-    sc.onerror=function(){pdfReady=null;rej(new Error("Outil de conversion indisponible. Mettez l'outil à jour."))};document.head.appendChild(sc)});
-  return pdfReady;
-}
-function imgName(l,i){return "Catalogue "+l.replace(/[\/\\:*?"<>|·]/g," ").replace(/\s+/g," ").trim()+" - page "+(i<10?"0":"")+i+".jpg"}
-function imgSheet(msg,label){openSheet('<h2>Images du catalogue</h2><div class="s" style="color:var(--muted)">'+esc(label)+'</div><div class="empty" id="imgmsg">'+esc(msg)+'</div><div class="row"><button class="btn grow" data-act="catback">Retour</button></div>')}
-function makeImages(f,label){
-  imgSheet("Préparation…",label);catImgs={label:label,files:[]};
-  var msg=function(t){var m=$("#imgmsg");if(m)m.textContent=t};
-  loadPdfJs().then(function(lib){return lib.getDocument({url:"uploads/catalogues/"+f}).promise}).then(function(doc){
-    var n=doc.numPages,MAXI=10,PW=1240;
-    /* 10 images maximum : si le catalogue a plus de pages, les dernières pages sont réunies côte à côte */
-    var sizes=[],cnt=Math.min(n,MAXI),base=Math.floor(n/cnt),rem=n%cnt;
-    for(var g=0;g<cnt;g++)sizes.push(g<cnt-rem?base:base+1);
-    var groups=[],pi=1;sizes.forEach(function(k){var arr=[];for(var j=0;j<k;j++)arr.push(pi++);groups.push(arr)});
-    catImgs.groups=groups;
-    var chain=Promise.resolve();
-    groups.forEach(function(pages,gi){chain=chain.then(function(){
-      msg("Création des images… "+(gi+1)+" / "+groups.length);
-      return Promise.all(pages.map(function(no){return doc.getPage(no)})).then(function(pgs){
-        var vps=pgs.map(function(pg){var v1=pg.getViewport({scale:1});return pg.getViewport({scale:PW/v1.width})});
-        var W=0,H=0;vps.forEach(function(v){W+=Math.round(v.width);H=Math.max(H,Math.round(v.height))});
-        var cv=document.createElement("canvas");cv.width=W;cv.height=H;
-        var cx=cv.getContext("2d");cx.fillStyle="#fff";cx.fillRect(0,0,W,H);
-        var x=0,seq=Promise.resolve();
-        pgs.forEach(function(pg,j){var ox=x;x+=Math.round(vps[j].width);seq=seq.then(function(){return pg.render({canvasContext:cx,viewport:vps[j],transform:[1,0,0,1,ox,0],background:"rgba(0,0,0,0)"}).promise})});
-        return seq.then(function(){return new Promise(function(r){cv.toBlob(function(bl){
-          var label2=pages.length>1?("pages "+pages[0]+"-"+pages[pages.length-1]):("page "+pages[0]);
-          catImgs.files.push(new File([bl],"Catalogue "+label.replace(/[\/\\:*?"<>|·]/g," ").replace(/\s+/g," ").trim()+" - "+(gi<9?"0":"")+(gi+1)+".jpg",{type:"image/jpeg"}));
-          cv.width=cv.height=1;r()},"image/jpeg",0.9)})})})})});
-    return chain.then(function(){return n});
-  }).then(function(n){
-    var fl=catImgs.files,merged=catImgs.groups.filter(function(g){return g.length>1});
-    var note=merged.length?(n+" pages ont été mises en "+fl.length+" images : "+merged.map(function(g){return "pages "+g[0]+" et "+g[g.length-1]}).join(", ")+" sont réunies côte à côte. Tout le catalogue est affiché, et ça tient dans un seul message Instagram."):("Le catalogue tient en "+fl.length+" images, donc dans un seul message Instagram.");
-    $("#layer .sheet").innerHTML='<h2>Images du catalogue</h2><div class="s" style="color:var(--muted)">'+esc(label)+'</div>'+
-      '<div class="card"><b>'+fl.length+' images prêtes.</b><div class="s" style="color:var(--muted);margin-top:4px">'+esc(note)+' Dans la fenêtre de partage, choisissez Instagram, ou « Enregistrer les images » pour les mettre dans vos Photos.</div></div>'+
-      '<button class="btn primary" data-act="imgshare" data-i="0">Partager les '+fl.length+' images</button><button class="btn" data-act="imgdl">Télécharger les images une par une</button><div class="row"><button class="btn grow" data-act="catback">Retour</button></div>';
-  }).catch(function(e){msg("Impossible de créer les images : "+(e&&e.message||"erreur"))});
-}
-function shareImgs(k){
-  var fl=catImgs.files.slice(k*10,k*10+10);
-  if(navigator.canShare&&navigator.canShare({files:fl}))navigator.share({files:fl,title:"Watch Côte d'Ivoire · Catalogue "+catImgs.label}).catch(function(e){if(!e||e.name!=="AbortError")toast("Partage impossible. Utilisez « Télécharger les images ».")});
-  else toast("Le partage direct n'est pas disponible ici. Utilisez « Télécharger les images ».");
-}
-function dlImgs(){
-  catImgs.files.forEach(function(file,i){setTimeout(function(){var u=URL.createObjectURL(file),a=document.createElement("a");a.href=u;a.download=file.name;document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(u)},4000)},i*450)});
-  toast("Téléchargement de "+catImgs.files.length+" images…");
+    save(bl);
+  }).catch(function(e){if(e&&e.name==="AbortError")return;toast("Partage impossible.")});
 }
 function copyCatLink(f){
   var full=new URL("uploads/catalogues/"+f,location.href).href;
@@ -631,10 +576,6 @@ document.addEventListener("click",function(e){
     case "catdel":api("cat_delete",{file:b.dataset.f}).then(function(){toast("Catalogue supprimé.");catSheet()}).catch(function(e){toast(e.message)});break;
     case "catadd":addCat(b);break;
     case "catlink":copyCatLink(b.dataset.f);break;
-    case "catimg":makeImages(b.dataset.f,b.dataset.l);break;
-    case "catback":catSheet();break;
-    case "imgshare":shareImgs(+b.dataset.i);break;
-    case "imgdl":dlImgs();break;
     case "catren":{var it=b.closest(".item"),hd=it.firstChild;
       hd.innerHTML='<input class="catnew" type="text" maxlength="80" value="'+esc(b.dataset.l)+'" style="flex:1"><button class="btn small primary" data-act="catren_ok" data-f="'+esc(b.dataset.f)+'">OK</button>';
       var inp=hd.querySelector("input");inp.focus();inp.select();break}
