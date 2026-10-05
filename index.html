@@ -165,7 +165,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=21;
+var PAGE_V=22;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -425,21 +425,33 @@ function makeImages(f,label){
   imgSheet("Préparation…",label);catImgs={label:label,files:[]};
   var msg=function(t){var m=$("#imgmsg");if(m)m.textContent=t};
   loadPdfJs().then(function(lib){return lib.getDocument({url:"uploads/catalogues/"+f}).promise}).then(function(doc){
-    var n=doc.numPages,chain=Promise.resolve();
-    var step=function(i){return doc.getPage(i).then(function(pg){
-      var v1=pg.getViewport({scale:1}),sc=1240/v1.width,vp=pg.getViewport({scale:sc});
-      var cv=document.createElement("canvas");cv.width=Math.round(vp.width);cv.height=Math.round(vp.height);
-      var cx=cv.getContext("2d");cx.fillStyle="#fff";cx.fillRect(0,0,cv.width,cv.height);
-      return pg.render({canvasContext:cx,viewport:vp}).promise.then(function(){
-        return new Promise(function(r){cv.toBlob(function(bl){catImgs.files.push(new File([bl],imgName(label,i),{type:"image/jpeg"}));cv.width=cv.height=1;r()},"image/jpeg",0.9)})})})};
-    for(var i=1;i<=n;i++)(function(i){chain=chain.then(function(){msg("Création des images… "+i+" / "+n);return step(i)})})(i);
-    return chain;
-  }).then(function(){
-    var fl=catImgs.files,btns="";
-    for(var k=0;k*10<fl.length;k++){var a=k*10+1,z=Math.min(fl.length,k*10+10);btns+='<button class="btn primary" data-act="imgshare" data-i="'+k+'">Partager les images '+a+(z>a?' à '+z:'')+'</button>'}
+    var n=doc.numPages,MAXI=10,PW=1240;
+    /* 10 images maximum : si le catalogue a plus de pages, les dernières pages sont réunies côte à côte */
+    var sizes=[],cnt=Math.min(n,MAXI),base=Math.floor(n/cnt),rem=n%cnt;
+    for(var g=0;g<cnt;g++)sizes.push(g<cnt-rem?base:base+1);
+    var groups=[],pi=1;sizes.forEach(function(k){var arr=[];for(var j=0;j<k;j++)arr.push(pi++);groups.push(arr)});
+    catImgs.groups=groups;
+    var chain=Promise.resolve();
+    groups.forEach(function(pages,gi){chain=chain.then(function(){
+      msg("Création des images… "+(gi+1)+" / "+groups.length);
+      return Promise.all(pages.map(function(no){return doc.getPage(no)})).then(function(pgs){
+        var vps=pgs.map(function(pg){var v1=pg.getViewport({scale:1});return pg.getViewport({scale:PW/v1.width})});
+        var W=0,H=0;vps.forEach(function(v){W+=Math.round(v.width);H=Math.max(H,Math.round(v.height))});
+        var cv=document.createElement("canvas");cv.width=W;cv.height=H;
+        var cx=cv.getContext("2d");cx.fillStyle="#fff";cx.fillRect(0,0,W,H);
+        var x=0,seq=Promise.resolve();
+        pgs.forEach(function(pg,j){var ox=x;x+=Math.round(vps[j].width);seq=seq.then(function(){return pg.render({canvasContext:cx,viewport:vps[j],transform:[1,0,0,1,ox,0],background:"rgba(0,0,0,0)"}).promise})});
+        return seq.then(function(){return new Promise(function(r){cv.toBlob(function(bl){
+          var label2=pages.length>1?("pages "+pages[0]+"-"+pages[pages.length-1]):("page "+pages[0]);
+          catImgs.files.push(new File([bl],"Catalogue "+label.replace(/[\/\\:*?"<>|·]/g," ").replace(/\s+/g," ").trim()+" - "+(gi<9?"0":"")+(gi+1)+".jpg",{type:"image/jpeg"}));
+          cv.width=cv.height=1;r()},"image/jpeg",0.9)})})})})});
+    return chain.then(function(){return n});
+  }).then(function(n){
+    var fl=catImgs.files,merged=catImgs.groups.filter(function(g){return g.length>1});
+    var note=merged.length?(n+" pages ont été mises en "+fl.length+" images : "+merged.map(function(g){return "pages "+g[0]+" et "+g[g.length-1]}).join(", ")+" sont réunies côte à côte. Tout le catalogue est affiché, et ça tient dans un seul message Instagram."):("Le catalogue tient en "+fl.length+" images, donc dans un seul message Instagram.");
     $("#layer .sheet").innerHTML='<h2>Images du catalogue</h2><div class="s" style="color:var(--muted)">'+esc(label)+'</div>'+
-      '<div class="card"><b>'+fl.length+' images prêtes.</b><div class="s" style="color:var(--muted);margin-top:4px">Instagram accepte 10 images par message, donc on les partage par groupes de 10. Dans la fenêtre de partage, choisissez Instagram, ou « Enregistrer les images » pour les mettre dans vos Photos.</div></div>'+
-      btns+'<button class="btn" data-act="imgdl">Télécharger les images une par une</button><div class="row"><button class="btn grow" data-act="catback">Retour</button></div>';
+      '<div class="card"><b>'+fl.length+' images prêtes.</b><div class="s" style="color:var(--muted);margin-top:4px">'+esc(note)+' Dans la fenêtre de partage, choisissez Instagram, ou « Enregistrer les images » pour les mettre dans vos Photos.</div></div>'+
+      '<button class="btn primary" data-act="imgshare" data-i="0">Partager les '+fl.length+' images</button><button class="btn" data-act="imgdl">Télécharger les images une par une</button><div class="row"><button class="btn grow" data-act="catback">Retour</button></div>';
   }).catch(function(e){msg("Impossible de créer les images : "+(e&&e.message||"erreur"))});
 }
 function shareImgs(k){
