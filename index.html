@@ -61,6 +61,8 @@ nav button[aria-current="page"]{color:var(--accent);background:var(--accent-soft
 .btn.danger{color:var(--bad);border-color:var(--bad)}
 .btn.small{padding:5px 10px;font-size:13px}
 .btn:disabled{opacity:.5;cursor:default}
+a.btn{text-decoration:none;color:var(--ink);display:inline-block}
+a.btn.primary{color:var(--accent-ink)}
 input,select,textarea{width:100%;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:9px 11px;min-width:0}
 label.f{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);font-weight:500;min-width:0}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -165,7 +167,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=22;
+var PAGE_V=23;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -378,10 +380,15 @@ function catSheet(msg){
   api("catalogues").then(function(j){
     if(j.seed){seedStep(0);return}
     var rows=j.catalogues.length?j.catalogues.map(function(c){
-      return '<div class="item" style="flex-direction:column;align-items:stretch;gap:8px"><div class="row" style="justify-content:space-between;flex-wrap:nowrap"><span class="t">'+esc(c.label)+'</span><span class="s">'+catSize(c.size)+'</span></div>'+
-        '<div class="row"><a class="btn small primary" href="uploads/catalogues/'+esc(c.file)+'" download="'+esc(c.label.replace(/[\/\\:*?"<>|·]/g," ").replace(/\s+/g," ").trim())+'.pdf">Télécharger</a>'+
-        '<button class="btn small" data-act="catshare" data-f="'+esc(c.file)+'" data-l="'+esc(c.label)+'">Partager</button>'+
-        '<button class="btn small" data-act="catimg" data-f="'+esc(c.file)+'" data-l="'+esc(c.label)+'">Images</button><button class="btn small" data-act="catren" data-f="'+esc(c.file)+'" data-l="'+esc(c.label)+'">Renommer</button><span class="grow"></span><button class="btn small danger" data-act="catdel" data-f="'+esc(c.file)+'" data-confirm="Supprimer ?">Supprimer</button></div></div>'}).join(""):'<div class="empty">Aucun catalogue pour le moment.</div>';
+      var fe=esc(c.file),le=esc(c.label);
+      return '<div class="item" style="flex-direction:column;align-items:stretch;gap:8px"><div class="row" style="justify-content:space-between;flex-wrap:nowrap"><span class="t">'+le+'</span><span class="s">'+catSize(c.size)+'</span></div>'+
+        '<div class="row"><button class="btn small primary" data-act="catlink" data-f="'+fe+'">Copier le lien</button>'+
+        '<a class="btn small" href="uploads/catalogues/'+fe+'" download="'+esc(c.label.replace(/[\/\\:*?"<>|·]/g," ").replace(/\s+/g," ").trim())+'.pdf">Télécharger</a>'+
+        '<button class="btn small" data-act="catshare" data-f="'+fe+'" data-l="'+le+'">Partager</button></div>'+
+        '<div class="row"><button class="btn small" data-act="catimg" data-f="'+fe+'" data-l="'+le+'">Images</button>'+
+        '<button class="btn small" data-act="catren" data-f="'+fe+'" data-l="'+le+'">Renommer</button>'+
+        '<span class="grow"></span><button class="btn small danger" data-act="catdel" data-f="'+fe+'" data-confirm="Supprimer ?">Supprimer</button></div></div>'
+    }).join(""):'<div class="empty">Aucun catalogue pour le moment.</div>';
     openSheet('<h2>Catalogues</h2><div class="list">'+rows+'</div>'+
       '<div class="card" style="display:flex;flex-direction:column;gap:8px"><h3>Ajouter un catalogue</h3>'+
       '<label class="f">Nom<input id="c_label" type="text" placeholder="Ex. 42/44/45/46/49 MM · 5 000 F"></label>'+
@@ -462,6 +469,12 @@ function shareImgs(k){
 function dlImgs(){
   catImgs.files.forEach(function(file,i){setTimeout(function(){var u=URL.createObjectURL(file),a=document.createElement("a");a.href=u;a.download=file.name;document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(u)},4000)},i*450)});
   toast("Téléchargement de "+catImgs.files.length+" images…");
+}
+function copyCatLink(f){
+  var full=new URL("uploads/catalogues/"+f,location.href).href;
+  var ok=function(){toast("Lien copié. Collez-le dans Instagram.")};
+  var fallback=function(){var t=document.createElement("textarea");t.value=full;t.style.position="fixed";t.style.opacity="0";document.body.appendChild(t);t.select();try{document.execCommand("copy")?ok():toast(full)}catch(e){toast(full)}t.remove()};
+  if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(full).then(ok,fallback);else fallback();
 }
 function productOptions(sel){return '<option value="">Choisir un produit</option>'+groups().map(function(g){return '<optgroup label="'+esc(g.base.name+(g.base.color?" · "+g.base.color:""))+'">'+g.items.map(function(p){return '<option value="'+p.id+'"'+(p.id===sel?' selected':'')+'>'+esc(p.size?p.size+" MM":"Taille unique")+' (stock '+(p.stock||0)+')</option>'}).join("")+'</optgroup>'}).join("")}
 function itemRowHtml(){return '<div class="itemrow"><label class="f">Article<select data-f="pid">'+productOptions("")+'</select></label><label class="f">Qté<input data-f="qty" type="number" min="1" value="1" inputmode="numeric"></label><label class="f">Prix unit.<input data-f="price" type="number" min="0" inputmode="numeric" placeholder="F"></label><button class="btn small" data-act="rmrow" aria-label="Retirer la ligne" type="button">×</button></div>'}
@@ -617,6 +630,7 @@ document.addEventListener("click",function(e){
     case "catshare":shareCat(b.dataset.f,b.dataset.l);break;
     case "catdel":api("cat_delete",{file:b.dataset.f}).then(function(){toast("Catalogue supprimé.");catSheet()}).catch(function(e){toast(e.message)});break;
     case "catadd":addCat(b);break;
+    case "catlink":copyCatLink(b.dataset.f);break;
     case "catimg":makeImages(b.dataset.f,b.dataset.l);break;
     case "catback":catSheet();break;
     case "imgshare":shareImgs(+b.dataset.i);break;
