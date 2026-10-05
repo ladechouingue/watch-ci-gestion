@@ -138,6 +138,7 @@ a{color:var(--accent)}
 @media(min-width:760px) and (max-width:999px){.stockgrid{grid-template-columns:1fr 1fr}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 .catname{display:flex;align-items:center;gap:8px;background:none;border:0;padding:0;font:inherit;color:var(--ink);text-align:left;cursor:pointer;min-width:0}.catname svg{flex:none;color:var(--accent);opacity:.85}
+.catacts{gap:6px;flex-wrap:nowrap}.catacts .btn{padding-left:10px;padding-right:10px;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -168,7 +169,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=26;
+var PAGE_V=27;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -383,9 +384,9 @@ function catSheet(msg){
     var rows=j.catalogues.length?j.catalogues.map(function(c){
       var fe=esc(c.file),le=esc(c.label);
       return '<div class="item" style="flex-direction:column;align-items:stretch;gap:8px"><div class="row" style="justify-content:space-between;flex-wrap:nowrap"><button class="catname" data-act="catren" data-f="'+fe+'" data-l="'+le+'" aria-label="Modifier le nom"><span class="t">'+le+'</span><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button><span class="s">'+catSize(c.size)+'</span></div>'+
-        '<div class="row"><a class="btn small primary" href="uploads/catalogues/'+fe+'" target="_blank" rel="noopener">Ouvrir</a><button class="btn small" data-act="catlink" data-f="'+fe+'">Copier le lien</button>'+
-        '<button class="btn small" data-act="catshare" data-f="'+fe+'" data-l="'+le+'">Partager</button></div>'+
-        '<div class="row"><span class="grow"></span><button class="btn small danger" data-act="catdel" data-f="'+fe+'" data-confirm="Supprimer ?">Supprimer</button></div></div>'
+        '<div class="row catacts"><a class="btn small primary" href="uploads/catalogues/'+fe+'" target="_blank" rel="noopener">Ouvrir</a><button class="btn small" data-act="catlink" data-f="'+fe+'">Lien</button>'+
+        '<button class="btn small" data-act="catshare" data-f="'+fe+'" data-l="'+le+'">Partager</button>'+
+        '<span class="grow"></span><button class="btn small danger" data-act="catdel" data-f="'+fe+'" data-confirm="Supprimer ?">Supprimer</button></div></div>'
     }).join(""):'<div class="empty">Aucun catalogue pour le moment.</div>';
     openSheet('<h2>Catalogues</h2><div class="list">'+rows+'</div>'+
       '<div class="card" style="display:flex;flex-direction:column;gap:8px"><h3>Ajouter un catalogue</h3>'+
