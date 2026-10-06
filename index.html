@@ -61,7 +61,7 @@ nav button[aria-current="page"]{color:var(--accent);background:var(--accent-soft
 .btn.danger{color:var(--bad);border-color:var(--bad)}
 .btn.small{padding:5px 10px;font-size:13px}
 .btn:disabled{opacity:.5;cursor:default}
-a.btn{text-decoration:none;color:var(--ink);display:inline-block}
+a.btn{text-align:center;text-decoration:none;color:var(--ink);display:inline-block}
 a.btn.primary{color:var(--accent-ink)}
 input,select,textarea{width:100%;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:9px 11px;min-width:0}
 label.f{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);font-weight:500;min-width:0}
@@ -149,6 +149,7 @@ a{color:var(--accent)}
 .itemrow>.f:first-child{grid-column:1/-1}.itemrow,.itemrow:not(x){grid-template-columns:90px 1fr 44px!important}
 input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=hidden]),select{min-height:44px}
 select{-webkit-appearance:none;appearance:none;padding-right:34px;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 18px) 52%,calc(100% - 13px) 52%;background-size:5px 5px,5px 5px;background-repeat:no-repeat;text-overflow:ellipsis}
+a.btn.grow{display:block;text-align:center;flex:1}
 </style>
 </head>
 <body>
@@ -179,7 +180,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=39;
+var PAGE_V=40;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -555,8 +556,8 @@ function orderSheet(id){
    '<div class="sum"><span>Paiement</span><span class="pill '+(o.paid?'good':'bad')+'">'+(o.paid?'Payé':'Non payé')+'</span></div></div>'+
    (o.note?'<div class="card">'+esc(o.note)+'</div>':'')+
    '<div class="row">'+
-   (o.status==="a_livrer"?'<button class="btn primary grow" data-act="setstatus" data-id="'+id+'" data-v="livre">Marquer livrée</button>':'')+
-   (!o.paid&&o.status!=="annule"?'<button class="btn grow" data-act="setpaid" data-id="'+id+'">Marquer payée</button>':'')+
+   (o.status==="a_livrer"?'<button class="btn primary grow" data-act="setstatus" data-id="'+id+'" data-v="livre">Marquer livrée</button>':o.status==="livre"?'<button class="btn grow" data-act="setstatus" data-id="'+id+'" data-v="a_livrer">Remettre à livrer</button>':'')+
+   (o.status!=="annule"?(o.paid?'<button class="btn grow" data-act="setpaid" data-id="'+id+'" data-v="0">Marquer non payée</button>':'<button class="btn grow" data-act="setpaid" data-id="'+id+'" data-v="1">Marquer payée</button>'):'')+
    (o.status!=="annule"?'<div class="row"><a class="btn grow" href="api.php?r=invoice&id='+encodeURIComponent(id)+'" target="_blank" rel="noopener">Facture</a></div>':'')+
    '</div><div class="row">'+
    (o.status!=="annule"?'<button class="btn grow" data-act="editorder" data-id="'+id+'">Modifier</button>':'')+
@@ -564,7 +565,7 @@ function orderSheet(id){
    (o.status!=="annule"?'</div><div class="row"><button class="btn grow" data-act="close">Fermer</button></div>':'<button class="btn grow" data-act="close">Fermer</button></div>'));
 }
 var setStatus=guard(function(id,v){return patch("orders",id,{status:v}).then(function(){closeSheet()})});
-var setPaid=guard(function(id){return patch("orders",id,{paid:true}).then(function(){closeSheet()})});
+var setPaid=guard(function(id,v){return patch("orders",id,{paid:v!=="0"}).then(function(){closeSheet()})});
 var cancelOrder=guard(function(id){var o=orders.find(function(x){return x.id===id});if(!o)return;return patch("orders",id,{status:"annule"}).then(function(){return adjustStock(o.items||[],1)}).then(function(){closeSheet();toast("Commande annulée, stock remis.")})});
 var delOrder=guard(function(id){return del("orders",id).then(function(){closeSheet()})});
 
@@ -652,7 +653,7 @@ document.addEventListener("click",function(e){
     case "rmrow":if(document.querySelectorAll("#rows .itemrow").length>1){b.closest(".itemrow").remove();updateTotals()}break;
     case "saveorder":saveOrder(id||null);break;
     case "setstatus":setStatus(id,b.dataset.v);break;
-    case "setpaid":setPaid(id);break;
+    case "setpaid":setPaid(id,b.dataset.v);break;
     case "bkrestore":{var f=$("#bk_file").files&&$("#bk_file").files[0];if(!f){toast("Choisissez le fichier de sauvegarde.");break}var fd=new FormData();fd.append("file",f);b.disabled=true;b.textContent="Restauration…";
       api("restore",undefined,fd).then(function(r){return refresh().then(function(){closeSheet();toast("Restauré : "+r.products+" produits, "+r.orders+" commandes, "+r.expenses+" dépenses, "+r.photos+" photos, "+(r.catalogues||0)+" catalogues.")})}).catch(function(e){b.disabled=false;b.textContent="Restaurer";toast(e.message)});break}
     case "inv":invSheet();break;
