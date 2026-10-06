@@ -179,7 +179,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=37;
+var PAGE_V=38;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -546,7 +546,7 @@ function orderSheet(id){
    '<div class="row">'+
    (o.status==="a_livrer"?'<button class="btn primary grow" data-act="setstatus" data-id="'+id+'" data-v="livre">Marquer livrée</button>':'')+
    (!o.paid&&o.status!=="annule"?'<button class="btn grow" data-act="setpaid" data-id="'+id+'">Marquer payée</button>':'')+
-   (o.status!=="annule"?'<div class="row"><a class="btn grow" href="api.php?r=invoice&id='+encodeURIComponent(id)+'" target="_blank" rel="noopener">Voir la facture</a><button class="btn grow" data-act="shareinv" data-id="'+id+'" data-n="'+esc(o.customer||"client")+'">Partager la facture</button></div>':'')+
+   (o.status!=="annule"?'<div class="row"><a class="btn grow" href="api.php?r=invoice&id='+encodeURIComponent(id)+'" target="_blank" rel="noopener">Facture</a></div>':'')+
    '</div><div class="row">'+
    (o.status!=="annule"?'<button class="btn grow" data-act="editorder" data-id="'+id+'">Modifier</button>':'')+
    (o.status!=="annule"?'<button class="btn danger grow" data-act="cancelorder" data-id="'+id+'" data-confirm="Annuler la commande et remettre en stock ?">Annuler la commande</button>':'<button class="btn danger grow" data-act="delorder" data-id="'+id+'" data-confirm="Supprimer définitivement ?">Supprimer</button>')+
