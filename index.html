@@ -150,6 +150,7 @@ a{color:var(--accent)}
 input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=hidden]),select{min-height:44px}
 select{-webkit-appearance:none;appearance:none;padding-right:34px;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 18px) 52%,calc(100% - 13px) 52%;background-size:5px 5px,5px 5px;background-repeat:no-repeat;text-overflow:ellipsis}
 a.btn.grow{display:block;text-align:center;flex:1}
+.invframe{width:100%;height:58vh;min-height:320px;border:1px solid var(--line);border-radius:12px;background:#fff}
 </style>
 </head>
 <body>
@@ -180,7 +181,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=41;
+var PAGE_V=42;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -424,25 +425,22 @@ function bkSheet(){
   }).catch(function(e){openSheet('<h2>Sauvegarde par e-mail</h2><div class="empty">'+esc(e.message)+'</div><div class="row"><button class="btn grow" data-act="close">Fermer</button></div>')});
 }
 
-function shareInvoice(id,who){
+var invBlob=null,invName="Facture.pdf",invUrl="";
+function invoiceSheet(id,who){
   toast("Préparation de la facture…");
   fetch("api.php?r=invoice&id="+encodeURIComponent(id),{credentials:"same-origin"}).then(function(r){if(!r.ok)throw new Error("x");return r.blob()}).then(function(bl){
-    var name="Facture "+String(who||"").replace(/[\/\\:*?"<>|]/g," ").replace(/\s+/g," ").trim()+".pdf";
-    var file=new File([bl],name,{type:"application/pdf"});
-    if(navigator.canShare&&navigator.canShare({files:[file]}))return navigator.share({files:[file],title:name});
-    var u=URL.createObjectURL(bl),a=document.createElement("a");a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(u)},4000);toast("Facture téléchargée.");
-  }).catch(function(e){if(e&&e.name==="AbortError")return;toast("Facture impossible pour le moment.")});
+    invBlob=bl;invName="Facture "+String(who||"").replace(/[\/\\:*?"<>|]/g," ").replace(/\s+/g," ").trim()+".pdf";
+    if(invUrl)URL.revokeObjectURL(invUrl);invUrl=URL.createObjectURL(bl);
+    $("#toast").hidden=true;
+    openSheet('<h2>Facture</h2><iframe class="invframe" src="'+invUrl+'#toolbar=0&navpanes=0" title="Facture"></iframe>'+
+      '<div class="row"><button class="btn grow" data-act="close" type="button">Fermer</button><button class="btn primary grow" data-act="invshare" type="button">Partager</button></div>');
+  }).catch(function(){toast("Facture impossible pour le moment.")});
 }
-
-function invSheet(){
-  openSheet('<h2>Facture</h2><div class="empty">Chargement…</div>');
-  api("inv_get").then(function(j){
-    openSheet('<h2>Facture</h2><p class="s" style="color:var(--muted)">Ces informations apparaissent en haut de chaque facture.</p>'+
-      '<div class="row"><div class="thumb" style="width:72px;height:72px">'+(j.logo?'<img alt="" src="'+esc(j.logo)+'">':'Logo')+'</div><div class="grow" style="display:flex;flex-direction:column;gap:6px"><input id="iv_logo" type="file" accept="image/*"><div class="row">'+(j.logo?'<button class="btn small danger" data-act="ivlogodel" type="button">Retirer le logo</button>':'')+'</div></div></div>'+
-      '<label class="f">Téléphone (facultatif)<input id="iv_phone" type="tel" value="'+esc(j.phone)+'" placeholder="+225 …"></label>'+
-      '<label class="f">Adresse (facultatif)<input id="iv_addr" type="text" maxlength="120" value="'+esc(j.addr)+'" placeholder="Ex. Abidjan, Cocody"></label>'+
-      '<div class="row"><button class="btn grow" data-act="close" type="button">Fermer</button><button class="btn primary grow" data-act="ivsave" type="button">Enregistrer</button></div>');
-  }).catch(function(e){openSheet('<h2>Facture</h2><div class="empty">'+esc(e.message)+'</div><div class="row"><button class="btn grow" data-act="close">Fermer</button></div>')});
+function shareInvoice(){
+  if(!invBlob)return;
+  var file=new File([invBlob],invName,{type:"application/pdf"});
+  if(navigator.canShare&&navigator.canShare({files:[file]})){navigator.share({files:[file],title:invName}).catch(function(e){if(e&&e.name!=="AbortError")toast("Partage impossible.")});return}
+  var a=document.createElement("a");a.href=invUrl;a.download=invName;document.body.appendChild(a);a.click();a.remove();toast("Facture téléchargée.");
 }
 function seedStep(i,total){
   var el=$("#layer .empty");if(el)el.textContent="Chargement de vos catalogues… "+(total?(i+" / "+total):"");
@@ -558,7 +556,7 @@ function orderSheet(id){
    '<div class="row">'+
    (o.status==="a_livrer"?'<button class="btn primary grow" data-act="setstatus" data-id="'+id+'" data-v="livre">Marquer livrée</button>':o.status==="livre"?'<button class="btn grow" data-act="setstatus" data-id="'+id+'" data-v="a_livrer">Remettre à livrer</button>':'')+
    (o.status!=="annule"?(o.paid?'<button class="btn grow" data-act="setpaid" data-id="'+id+'" data-v="0">Marquer non payée</button>':'<button class="btn grow" data-act="setpaid" data-id="'+id+'" data-v="1">Marquer payée</button>'):'')+
-   (o.status!=="annule"?'<div class="row"><a class="btn grow" href="api.php?r=invoice&id='+encodeURIComponent(id)+'" target="_blank" rel="noopener">Facture</a></div>':'')+
+   (o.status!=="annule"?'<div class="row"><button class="btn grow" data-act="invoice" data-id="'+id+'" data-n="'+esc(o.customer||"client")+'" type="button">Facture</button></div>':'')+
    '</div><div class="row">'+
    (o.status!=="annule"?'<button class="btn grow" data-act="editorder" data-id="'+id+'">Modifier</button>':'')+
    (o.status!=="annule"?'<button class="btn danger grow" data-act="cancelorder" data-id="'+id+'" data-confirm="Annuler la commande et remettre en stock ?">Annuler la commande</button>':'<button class="btn danger grow" data-act="delorder" data-id="'+id+'" data-confirm="Supprimer définitivement ?">Supprimer</button>')+
@@ -664,7 +662,8 @@ document.addEventListener("click",function(e){
     case "bksave":api("bk_set",{email:$("#bk_mail").value.trim()}).then(function(){toast($("#bk_mail").value.trim()?"Adresse enregistrée.":"Envoi désactivé.")}).catch(function(e){toast(e.message)});break;
     case "bktest":b.disabled=true;b.textContent="Envoi…";api("bk_set",{email:$("#bk_mail").value.trim()}).then(function(){return api("bk_test",{})}).then(function(){toast("E-mail envoyé. Vérifiez votre boîte (et les courriers indésirables).");bkSheet()}).catch(function(e){b.disabled=false;b.textContent="Envoyer un test";toast(e.message)});break;
     case "bkcopy":{var t=$("#bk_cron");t.select();try{document.execCommand("copy");toast("Commande copiée.")}catch(x){toast("Sélectionnez et copiez le texte.")}break}
-    case "shareinv":shareInvoice(id,b.dataset.n);break;
+    case "invoice":invoiceSheet(id,b.dataset.n);break;
+    case "invshare":shareInvoice();break;
     case "editorder":newOrderSheet(id);break;
     case "cancelorder":cancelOrder(id);break;
     case "delorder":delOrder(id);break;
