@@ -179,7 +179,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=36;
+var PAGE_V=37;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -422,6 +422,16 @@ function bkSheet(){
       '<div class="row"><button class="btn grow" data-act="close" type="button">Fermer</button></div>');
   }).catch(function(e){openSheet('<h2>Sauvegarde par e-mail</h2><div class="empty">'+esc(e.message)+'</div><div class="row"><button class="btn grow" data-act="close">Fermer</button></div>')});
 }
+
+function shareInvoice(id,who){
+  toast("Préparation de la facture…");
+  fetch("api.php?r=invoice&id="+encodeURIComponent(id),{credentials:"same-origin"}).then(function(r){if(!r.ok)throw new Error("x");return r.blob()}).then(function(bl){
+    var name="Facture "+String(who||"").replace(/[\/\\:*?"<>|]/g," ").replace(/\s+/g," ").trim()+".pdf";
+    var file=new File([bl],name,{type:"application/pdf"});
+    if(navigator.canShare&&navigator.canShare({files:[file]}))return navigator.share({files:[file],title:name});
+    var u=URL.createObjectURL(bl),a=document.createElement("a");a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(u)},4000);toast("Facture téléchargée.");
+  }).catch(function(e){if(e&&e.name==="AbortError")return;toast("Facture impossible pour le moment.")});
+}
 function seedStep(i,total){
   var el=$("#layer .empty");if(el)el.textContent="Chargement de vos catalogues… "+(total?(i+" / "+total):"");
   api("cat_seed",{i:i}).then(function(r){if(r.done)catSheet();else seedStep(r.next,r.total)}).catch(function(e){openSheet('<h2>Catalogues</h2><div class="empty">'+esc(e.message)+'</div><div class="row"><button class="btn grow" data-act="close">Fermer</button></div>')});
@@ -508,6 +518,7 @@ var saveOrder=guard(function(oid){
   if($("#o_fee").value.trim()===""){toast("Indiquez le coût de la livraison (0 s'il n'y en a pas).");return}
   var items=rows.map(function(r){return {pid:r.pid,label:label(r.p),qty:r.qty,price:isNaN(r.price)?r.p.price:r.price,cost:r.p.cost||0}});
   var o={date:$("#o_date").value||today(),customer:name,phone:$("#o_phone").value.trim(),channel:$("#o_channel").value,items:items,dcost:parseFloat($("#o_fee").value)||0,fee:$("#o_mine").checked?(parseFloat($("#o_fee").value)||0):0,paid:$("#o_paid").checked,note:$("#o_note").value.trim(),status:eo?eo.status:"a_livrer",createdAt:eo?(eo.createdAt||new Date().toISOString()):new Date().toISOString()};
+  if(eo&&eo.inv)o.inv=eo.inv;
   if(eo){
     var d={};(eo.items||[]).forEach(function(i){d[i.pid]=(d[i.pid]||0)+i.qty});items.forEach(function(i){d[i.pid]=(d[i.pid]||0)-i.qty});
     var list=Object.keys(d).filter(function(k){return d[k]}).map(function(k){return {pid:k,delta:d[k]}});
@@ -535,6 +546,7 @@ function orderSheet(id){
    '<div class="row">'+
    (o.status==="a_livrer"?'<button class="btn primary grow" data-act="setstatus" data-id="'+id+'" data-v="livre">Marquer livrée</button>':'')+
    (!o.paid&&o.status!=="annule"?'<button class="btn grow" data-act="setpaid" data-id="'+id+'">Marquer payée</button>':'')+
+   (o.status!=="annule"?'<div class="row"><a class="btn grow" href="api.php?r=invoice&id='+encodeURIComponent(id)+'" target="_blank" rel="noopener">Voir la facture</a><button class="btn grow" data-act="shareinv" data-id="'+id+'" data-n="'+esc(o.customer||"client")+'">Partager la facture</button></div>':'')+
    '</div><div class="row">'+
    (o.status!=="annule"?'<button class="btn grow" data-act="editorder" data-id="'+id+'">Modifier</button>':'')+
    (o.status!=="annule"?'<button class="btn danger grow" data-act="cancelorder" data-id="'+id+'" data-confirm="Annuler la commande et remettre en stock ?">Annuler la commande</button>':'<button class="btn danger grow" data-act="delorder" data-id="'+id+'" data-confirm="Supprimer définitivement ?">Supprimer</button>')+
@@ -636,6 +648,7 @@ document.addEventListener("click",function(e){
     case "bksave":api("bk_set",{email:$("#bk_mail").value.trim()}).then(function(){toast($("#bk_mail").value.trim()?"Adresse enregistrée.":"Envoi désactivé.")}).catch(function(e){toast(e.message)});break;
     case "bktest":b.disabled=true;b.textContent="Envoi…";api("bk_set",{email:$("#bk_mail").value.trim()}).then(function(){return api("bk_test",{})}).then(function(){toast("E-mail envoyé. Vérifiez votre boîte (et les courriers indésirables).");bkSheet()}).catch(function(e){b.disabled=false;b.textContent="Envoyer un test";toast(e.message)});break;
     case "bkcopy":{var t=$("#bk_cron");t.select();try{document.execCommand("copy");toast("Commande copiée.")}catch(x){toast("Sélectionnez et copiez le texte.")}break}
+    case "shareinv":shareInvoice(id,b.dataset.n);break;
     case "editorder":newOrderSheet(id);break;
     case "cancelorder":cancelOrder(id);break;
     case "delorder":delOrder(id);break;

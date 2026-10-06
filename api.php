@@ -220,6 +220,95 @@ function dropPhoto(PDO $pdo, string $photo, string $exceptId): void {
     foreach (photoFiles($photo) as $f) { if (is_file($f)) { @unlink($f); } }
 }
 
+/* ---------- Facture PDF (sans bibliothèque) ---------- */
+function pdfW(string $t, bool $b, float $sz): float {
+    static $r = [278,278,355,556,556,889,667,191,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,556,278,278,584,584,584,556,1015,667,667,722,722,667,611,778,722,278,500,667,556,833,722,778,667,778,722,667,611,722,667,944,667,667,611,278,278,278,469,556,333,556,556,500,556,556,278,556,556,222,222,500,222,833,556,556,556,556,333,500,278,556,500,722,500,500,500,334,260,334,584];
+    static $d = [278,333,474,556,556,889,722,238,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,556,333,333,584,584,584,611,975,722,722,722,722,667,611,778,722,278,556,722,611,833,722,778,667,778,722,667,611,722,667,944,667,667,611,333,278,333,584,556,333,556,611,556,611,556,333,611,611,278,278,556,278,889,611,611,611,611,389,556,333,611,556,778,556,556,500,389,280,389,584];
+    $a = $b ? $d : $r; $w = 0;
+    $x = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $t); if ($x === false) { $x = $t; }
+    foreach (str_split($x) as $c) { $o = ord($c); $w += ($o >= 32 && $o <= 126) ? $a[$o - 32] : 556; }
+    return $w * $sz / 1000;
+}
+function pdfFit(string $t, bool $b, float $sz, float $max): string {
+    if (pdfW($t, $b, $sz) <= $max) { return $t; }
+    while ($t !== '' && pdfW($t . '...', $b, $sz) > $max) { $t = mb_substr($t, 0, mb_strlen($t) - 1); }
+    return $t . '...';
+}
+function pdfStr(string $t): string {
+    $x = @iconv('UTF-8', 'windows-1252//TRANSLIT//IGNORE', $t); if ($x === false) { $x = $t; }
+    return str_replace(['\\', '(', ')', "\r", "\n"], ['\\\\', '\\(', '\\)', ' ', ' '], $x);
+}
+function money($n): string { return number_format((float)$n, 0, ',', ' ') . ' F'; }
+function buildInvoice(array $o, string $num): string {
+    $items = is_array($o['items'] ?? null) ? $o['items'] : [];
+    $sub = 0; foreach ($items as $i) { $sub += (float)($i['qty'] ?? 0) * (float)($i['price'] ?? 0); }
+    $ship = empty($o['fee']) ? (float)($o['dcost'] ?? 0) : 0;
+    $mine = !empty($o['fee']);
+    $total = $sub + $ship;
+    $pages = []; $c = '';
+    $T = function (float $x, float $y, string $t, float $sz = 10, bool $b = false, string $al = 'l', string $col = '0.1 0.13 0.11') use (&$c) {
+        if ($al === 'r') { $x -= pdfW($t, $b, $sz); } elseif ($al === 'c') { $x -= pdfW($t, $b, $sz) / 2; }
+        $c .= "BT /" . ($b ? 'F2' : 'F1') . " $sz Tf $col rg 1 0 0 1 " . round($x, 2) . ' ' . round(842 - $y, 2) . ' Tm (' . pdfStr($t) . ") Tj ET\n";
+    };
+    $R = function (float $x, float $y, float $w, float $h, string $col) use (&$c) { $c .= "$col rg " . round($x, 2) . ' ' . round(842 - $y - $h, 2) . " $w $h re f\n"; };
+    $hdr = function () use (&$c, $T, $R, $num, $o) {
+        $R(0, 0, 595, 110, '0.87 0.39 0.06');
+        $T(48, 52, 'Watch Côte d\'Ivoire', 22, true, 'l', '1 1 1');
+        $T(48, 72, 'Bracelets et accessoires Apple Watch', 10, false, 'l', '1 1 1');
+        $T(48, 88, 'www.watchcotedivoire.com', 10, false, 'l', '1 1 1');
+        $T(547, 52, 'FACTURE', 22, true, 'r', '1 1 1');
+        $T(547, 72, 'N° ' . $num, 11, false, 'r', '1 1 1');
+        $T(547, 88, 'Date : ' . date('d/m/Y', strtotime((string)($o['date'] ?? 'now'))), 10, false, 'r', '1 1 1');
+    };
+    $hdr();
+    $T(48, 150, 'FACTURÉ À', 9, true, 'l', '0.45 0.5 0.47');
+    $T(48, 169, (string)($o['customer'] ?? 'Client'), 14, true);
+    $y = 185;
+    if (!empty($o['phone'])) { $T(48, $y, 'Tél. ' . $o['phone'], 10); $y += 15; }
+    $paid = !empty($o['paid']);
+    $R(447, 140, 100, 28, $paid ? '0.84 0.94 0.88' : '0.99 0.9 0.86');
+    $T(497, 158, $paid ? 'PAYÉE' : 'À PAYER', 11, true, 'c', $paid ? '0.1 0.45 0.25' : '0.7 0.2 0.1');
+    $y = max($y + 20, 235);
+    $head = function (float $y) use ($T, $R) {
+        $R(48, $y, 499, 24, '0.94 0.95 0.94');
+        $T(58, $y + 16, 'Article', 9, true); $T(360, $y + 16, 'Qté', 9, true, 'r'); $T(455, $y + 16, 'Prix unit.', 9, true, 'r'); $T(537, $y + 16, 'Total', 9, true, 'r');
+    };
+    $head($y); $y += 24;
+    foreach ($items as $i) {
+        if ($y > 740) {
+            $pages[] = $c; $c = ''; $y = 60; $head($y); $y += 24;
+        }
+        $q = (float)($i['qty'] ?? 0); $p = (float)($i['price'] ?? 0);
+        $T(58, $y + 18, pdfFit((string)($i['label'] ?? ''), false, 10, 270), 10);
+        $T(360, $y + 18, (string)(int)$q, 10, false, 'r'); $T(455, $y + 18, money($p), 10, false, 'r'); $T(537, $y + 18, money($q * $p), 10, true, 'r');
+        $y += 28; $c .= "0.88 0.9 0.89 RG 0.5 w 48 " . round(842 - $y, 2) . " m 547 " . round(842 - $y, 2) . " l S\n";
+    }
+    if ($y > 650) { $pages[] = $c; $c = ''; $y = 60; }
+    $y += 22;
+    $T(455, $y, 'Sous-total', 10, false, 'r'); $T(537, $y, money($sub), 10, false, 'r'); $y += 18;
+    $T(455, $y, 'Livraison', 10, false, 'r'); $T(537, $y, ($mine || $ship == 0) ? 'Offerte' : money($ship), 10, false, 'r'); $y += 12;
+    $R(330, $y, 217, 34, '0.87 0.39 0.06');
+    $T(342, $y + 22, 'TOTAL', 11, true, 'l', '1 1 1'); $T(537, $y + 22, money($total), 14, true, 'r', '1 1 1');
+    if (!empty($o['note'])) { $T(48, $y + 70, 'Note : ' . pdfFit((string)$o['note'], false, 9, 480), 9, false, 'l', '0.45 0.5 0.47'); }
+    $T(297, 800, 'Merci pour votre confiance !', 11, true, 'c', '0.87 0.39 0.06');
+    $pages[] = $c;
+    $objs = [1 => '<< /Type /Catalog /Pages 2 0 R >>', 3 => '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>', 4 => '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>'];
+    $kids = []; $n = 5;
+    foreach ($pages as $pc) {
+        $objs[$n] = "<< /Length " . strlen($pc) . " >>\nstream\n" . $pc . "endstream";
+        $objs[$n + 1] = "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents $n 0 R >>";
+        $kids[] = ($n + 1) . ' 0 R'; $n += 2;
+    }
+    $objs[2] = '<< /Type /Pages /Kids [' . implode(' ', $kids) . '] /Count ' . count($kids) . ' >>';
+    ksort($objs);
+    $out = "%PDF-1.4\n"; $off = [];
+    foreach ($objs as $k => $v) { $off[$k] = strlen($out); $out .= "$k 0 obj\n$v\nendobj\n"; }
+    $xr = strlen($out); $mx = max(array_keys($objs)) + 1;
+    $out .= "xref\n0 $mx\n0000000000 65535 f \n";
+    for ($k = 1; $k < $mx; $k++) { $out .= sprintf("%010d 00000 n \n", $off[$k]); }
+    return $out . "trailer\n<< /Size $mx /Root 1 0 R >>\nstartxref\n$xr\n%%EOF";
+}
+
 switch ($r) {
     case 'state':
         $bkTo = (string)(setting($pdo, 'bk_email') ?? '');
@@ -511,6 +600,23 @@ switch ($r) {
             }
         }
         out(['ok' => true, 'products' => count($j['products']), 'orders' => count($j['orders']), 'expenses' => count($j['expenses']), 'photos' => $np, 'catalogues' => $nc]);
+    }
+
+    case 'invoice': {
+        $id = (string)($_GET['id'] ?? '');
+        if (!okId($id)) { fail('Commande invalide.'); }
+        $st = $pdo->prepare('SELECT data FROM orders WHERE id=?'); $st->execute([$id]);
+        $o = json_decode((string)$st->fetchColumn(), true);
+        if (!is_array($o)) { fail('Commande introuvable.', 404); }
+        if (empty($o['inv'])) {
+            $seq = (int)(setting($pdo, 'inv_seq') ?? 0) + 1; setSetting($pdo, 'inv_seq', (string)$seq);
+            $o['inv'] = 'F-' . date('Y') . '-' . str_pad((string)$seq, 4, '0', STR_PAD_LEFT);
+            $pdo->prepare('UPDATE orders SET data=? WHERE id=?')->execute([json_encode($o, JSON_UNESCAPED_UNICODE), $id]);
+        }
+        $pdf = buildInvoice($o, (string)$o['inv']);
+        header('Content-Type: application/pdf'); header('Cache-Control: private, no-store');
+        header('Content-Disposition: inline; filename="Facture-' . $o['inv'] . '.pdf"'); header('Content-Length: ' . strlen($pdf));
+        echo $pdf; exit;
     }
 
     case 'bk_get':
