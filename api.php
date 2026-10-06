@@ -239,67 +239,90 @@ function pdfStr(string $t): string {
     return str_replace(['\\', '(', ')', "\r", "\n"], ['\\\\', '\\(', '\\)', ' ', ' '], $x);
 }
 function money($n): string { return number_format((float)$n, 0, ',', ' ') . ' F'; }
-function buildInvoice(array $o, string $num): string {
+function logoJpeg(): ?array {
+    if (!function_exists('imagecreatefromstring')) { return null; }
+    foreach ([__DIR__ . '/uploads/logo.jpg', __DIR__ . '/icon-192.png'] as $f) {
+        if (!is_file($f)) { continue; }
+        $im = @imagecreatefromstring((string)file_get_contents($f)); if (!$im) { continue; }
+        $w = imagesx($im); $h = imagesy($im);
+        $bg = imagecreatetruecolor($w, $h); imagefill($bg, 0, 0, imagecolorallocate($bg, 255, 255, 255));
+        imagecopy($bg, $im, 0, 0, 0, 0, $w, $h);
+        ob_start(); imagejpeg($bg, null, 88); $bin = (string)ob_get_clean();
+        imagedestroy($im); imagedestroy($bg);
+        return ['bin' => $bin, 'w' => $w, 'h' => $h];
+    }
+    return null;
+}
+function buildInvoice(array $o, string $num, array $biz = []): string {
     $items = is_array($o['items'] ?? null) ? $o['items'] : [];
     $sub = 0; foreach ($items as $i) { $sub += (float)($i['qty'] ?? 0) * (float)($i['price'] ?? 0); }
-    $ship = empty($o['fee']) ? (float)($o['dcost'] ?? 0) : 0;
     $mine = !empty($o['fee']);
+    $ship = $mine ? 0.0 : (float)($o['dcost'] ?? 0);
     $total = $sub + $ship;
-    $pages = []; $c = '';
-    $T = function (float $x, float $y, string $t, float $sz = 10, bool $b = false, string $al = 'l', string $col = '0.1 0.13 0.11') use (&$c) {
-        if ($al === 'r') { $x -= pdfW($t, $b, $sz); } elseif ($al === 'c') { $x -= pdfW($t, $b, $sz) / 2; }
-        $c .= "BT /" . ($b ? 'F2' : 'F1') . " $sz Tf $col rg 1 0 0 1 " . round($x, 2) . ' ' . round(842 - $y, 2) . ' Tm (' . pdfStr($t) . ") Tj ET\n";
-    };
-    $R = function (float $x, float $y, float $w, float $h, string $col) use (&$c) { $c .= "$col rg " . round($x, 2) . ' ' . round(842 - $y - $h, 2) . " $w $h re f\n"; };
-    $hdr = function () use (&$c, $T, $R, $num, $o) {
-        $R(0, 0, 595, 110, '0.87 0.39 0.06');
-        $T(48, 52, 'Watch Côte d\'Ivoire', 22, true, 'l', '1 1 1');
-        $T(48, 72, 'Bracelets et accessoires Apple Watch', 10, false, 'l', '1 1 1');
-        $T(48, 88, 'www.watchcotedivoire.com', 10, false, 'l', '1 1 1');
-        $T(547, 52, 'FACTURE', 22, true, 'r', '1 1 1');
-        $T(547, 72, 'N° ' . $num, 11, false, 'r', '1 1 1');
-        $T(547, 88, 'Date : ' . date('d/m/Y', strtotime((string)($o['date'] ?? 'now'))), 10, false, 'r', '1 1 1');
-    };
-    $hdr();
-    $T(48, 150, 'FACTURÉ À', 9, true, 'l', '0.45 0.5 0.47');
-    $T(48, 169, (string)($o['customer'] ?? 'Client'), 14, true);
-    $y = 185;
-    if (!empty($o['phone'])) { $T(48, $y, 'Tél. ' . $o['phone'], 10); $y += 15; }
+    $logo = $biz['logo'] ?? null;
     $paid = !empty($o['paid']);
-    $R(447, 140, 100, 28, $paid ? '0.84 0.94 0.88' : '0.99 0.9 0.86');
-    $T(497, 158, $paid ? 'PAYÉE' : 'À PAYER', 11, true, 'c', $paid ? '0.1 0.45 0.25' : '0.7 0.2 0.1');
-    $y = max($y + 20, 235);
-    $head = function (float $y) use ($T, $R) {
+    $render = function (float $H) use ($o, $num, $biz, $items, $sub, $mine, $ship, $total, $logo, $paid): array {
+        $c = '';
+        $T = function (float $x, float $y, string $t, float $sz = 10, bool $b = false, string $al = 'l', string $col = '0.1 0.13 0.11') use (&$c, $H) {
+            if ($al === 'r') { $x -= pdfW($t, $b, $sz); } elseif ($al === 'c') { $x -= pdfW($t, $b, $sz) / 2; }
+            $c .= "BT /" . ($b ? 'F2' : 'F1') . " $sz Tf $col rg 1 0 0 1 " . round($x, 2) . ' ' . round($H - $y, 2) . ' Tm (' . pdfStr($t) . ") Tj ET\n";
+        };
+        $R = function (float $x, float $y, float $w, float $h, string $col) use (&$c, $H) { $c .= "$col rg " . round($x, 2) . ' ' . round($H - $y - $h, 2) . " $w $h re f\n"; };
+        $line2 = trim('www.watchcotedivoire.com' . (!empty($biz['phone']) ? '  ·  ' . $biz['phone'] : ''));
+        $hh = !empty($biz['addr']) ? 124 : 110;
+        $R(0, 0, 595, $hh, '0.87 0.39 0.06');
+        $tx = 48;
+        if ($logo) {
+            $k = 64 / max($logo['w'], $logo['h']); $dw = round($logo['w'] * $k, 2); $dh = round($logo['h'] * $k, 2);
+            $c .= "q $dw 0 0 $dh " . round(48 + (64 - $dw) / 2, 2) . " " . round($H - 23 - $dh - (64 - $dh) / 2, 2) . " cm /Im1 Do Q\n"; $tx = 126;
+        }
+        $T($tx, 50, 'Watch Côte d\'Ivoire', 22, true, 'l', '1 1 1');
+        $T($tx, 70, 'Bracelets et accessoires Apple Watch', 10, false, 'l', '1 1 1');
+        $T($tx, 86, $line2, 10, false, 'l', '1 1 1');
+        if (!empty($biz['addr'])) { $T($tx, 102, pdfFit((string)$biz['addr'], false, 10, 380), 10, false, 'l', '1 1 1'); }
+        $T(547, 50, 'FACTURE', 22, true, 'r', '1 1 1');
+        $T(547, 70, 'N° ' . $num, 11, false, 'r', '1 1 1');
+        $T(547, 86, 'Date : ' . date('d/m/Y', strtotime((string)($o['date'] ?? 'now'))), 10, false, 'r', '1 1 1');
+        $y0 = $hh + 36;
+        $T(48, $y0, 'FACTURÉ À', 9, true, 'l', '0.45 0.5 0.47');
+        $T(48, $y0 + 19, pdfFit((string)($o['customer'] ?? 'Client'), true, 14, 360), 14, true);
+        $y = $y0 + 33;
+        if (!empty($o['phone'])) { $T(48, $y + 4, 'Tél. ' . $o['phone'], 10); $y += 17; }
+        $R(447, $y0 - 10, 100, 28, $paid ? '0.84 0.94 0.88' : '0.99 0.9 0.86');
+        $T(497, $y0 + 8, $paid ? 'PAYÉE' : 'À PAYER', 11, true, 'c', $paid ? '0.1 0.45 0.25' : '0.7 0.2 0.1');
+        $y += 24;
         $R(48, $y, 499, 24, '0.94 0.95 0.94');
         $T(58, $y + 16, 'Article', 9, true); $T(360, $y + 16, 'Qté', 9, true, 'r'); $T(455, $y + 16, 'Prix unit.', 9, true, 'r'); $T(537, $y + 16, 'Total', 9, true, 'r');
-    };
-    $head($y); $y += 24;
-    foreach ($items as $i) {
-        if ($y > 740) {
-            $pages[] = $c; $c = ''; $y = 60; $head($y); $y += 24;
+        $y += 24;
+        foreach ($items as $i) {
+            $q = (float)($i['qty'] ?? 0); $p = (float)($i['price'] ?? 0);
+            $T(58, $y + 18, pdfFit((string)($i['label'] ?? ''), false, 10, 270), 10);
+            $T(360, $y + 18, (string)(int)$q, 10, false, 'r'); $T(455, $y + 18, money($p), 10, false, 'r'); $T(537, $y + 18, money($q * $p), 10, true, 'r');
+            $y += 28; $c .= "0.88 0.9 0.89 RG 0.5 w 48 " . round($H - $y, 2) . " m 547 " . round($H - $y, 2) . " l S\n";
         }
-        $q = (float)($i['qty'] ?? 0); $p = (float)($i['price'] ?? 0);
-        $T(58, $y + 18, pdfFit((string)($i['label'] ?? ''), false, 10, 270), 10);
-        $T(360, $y + 18, (string)(int)$q, 10, false, 'r'); $T(455, $y + 18, money($p), 10, false, 'r'); $T(537, $y + 18, money($q * $p), 10, true, 'r');
-        $y += 28; $c .= "0.88 0.9 0.89 RG 0.5 w 48 " . round(842 - $y, 2) . " m 547 " . round(842 - $y, 2) . " l S\n";
+        $y += 20;
+        $T(455, $y, 'Sous-total', 10, false, 'r'); $T(537, $y, money($sub), 10, false, 'r'); $y += 18;
+        $T(455, $y, 'Livraison', 10, false, 'r'); $T(537, $y, ($mine || $ship == 0) ? 'Offerte' : money($ship), 10, false, 'r'); $y += 12;
+        $R(330, $y, 217, 34, '0.87 0.39 0.06');
+        $T(342, $y + 22, 'TOTAL', 11, true, 'l', '1 1 1'); $T(537, $y + 22, money($total), 14, true, 'r', '1 1 1');
+        $y += 34;
+        if (!empty($o['note'])) { $T(48, $y - 12, 'Note : ' . pdfFit((string)$o['note'], false, 9, 270), 9, false, 'l', '0.45 0.5 0.47'); }
+        $y += 34;
+        $T(297, $y, 'Merci pour votre confiance !', 11, true, 'c', '0.87 0.39 0.06');
+        return [$c, $y];
+    };
+    [, $yEnd] = $render(2000.0);
+    $H = (float)ceil($yEnd + 28);
+    [$c] = $render($H);
+    $objs = [1 => '<< /Type /Catalog /Pages 2 0 R >>', 2 => '<< /Type /Pages /Kids [6 0 R] /Count 1 >>',
+        3 => '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>', 4 => '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>',
+        5 => "<< /Length " . strlen($c) . " >>\nstream\n" . $c . "endstream"];
+    $xo = '';
+    if ($logo) {
+        $objs[7] = "<< /Type /XObject /Subtype /Image /Width {$logo['w']} /Height {$logo['h']} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length " . strlen($logo['bin']) . " >>\nstream\n" . $logo['bin'] . "\nendstream";
+        $xo = ' /XObject << /Im1 7 0 R >>';
     }
-    if ($y > 650) { $pages[] = $c; $c = ''; $y = 60; }
-    $y += 22;
-    $T(455, $y, 'Sous-total', 10, false, 'r'); $T(537, $y, money($sub), 10, false, 'r'); $y += 18;
-    $T(455, $y, 'Livraison', 10, false, 'r'); $T(537, $y, ($mine || $ship == 0) ? 'Offerte' : money($ship), 10, false, 'r'); $y += 12;
-    $R(330, $y, 217, 34, '0.87 0.39 0.06');
-    $T(342, $y + 22, 'TOTAL', 11, true, 'l', '1 1 1'); $T(537, $y + 22, money($total), 14, true, 'r', '1 1 1');
-    if (!empty($o['note'])) { $T(48, $y + 70, 'Note : ' . pdfFit((string)$o['note'], false, 9, 480), 9, false, 'l', '0.45 0.5 0.47'); }
-    $T(297, 800, 'Merci pour votre confiance !', 11, true, 'c', '0.87 0.39 0.06');
-    $pages[] = $c;
-    $objs = [1 => '<< /Type /Catalog /Pages 2 0 R >>', 3 => '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>', 4 => '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>'];
-    $kids = []; $n = 5;
-    foreach ($pages as $pc) {
-        $objs[$n] = "<< /Length " . strlen($pc) . " >>\nstream\n" . $pc . "endstream";
-        $objs[$n + 1] = "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents $n 0 R >>";
-        $kids[] = ($n + 1) . ' 0 R'; $n += 2;
-    }
-    $objs[2] = '<< /Type /Pages /Kids [' . implode(' ', $kids) . '] /Count ' . count($kids) . ' >>';
+    $objs[6] = "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 $H] /Resources << /Font << /F1 3 0 R /F2 4 0 R >>$xo >> /Contents 5 0 R >>";
     ksort($objs);
     $out = "%PDF-1.4\n"; $off = [];
     foreach ($objs as $k => $v) { $off[$k] = strlen($out); $out .= "$k 0 obj\n$v\nendobj\n"; }
@@ -585,7 +608,7 @@ switch ($r) {
             @mkdir($upDir . '/catalogues', 0755, true);
             for ($k = 0; $k < $zr->numFiles; $k++) {
                 $en = (string)$zr->getNameIndex($k);
-                $isPh = preg_match('#^uploads/((t_)?[a-f0-9]{24}\.jpg)$#', $en, $m);
+                $isPh = preg_match('#^uploads/((t_)?[a-f0-9]{24}\.jpg|logo\.jpg)$#', $en, $m);
                 $isCa = preg_match('#^uploads/catalogues/([A-Za-z0-9_-]{1,60}\.pdf)$#', $en, $m2);
                 if (!$isPh && !$isCa) { continue; }
                 $bin = (string)$zr->getFromIndex($k);
@@ -613,10 +636,41 @@ switch ($r) {
             $o['inv'] = 'F-' . date('Y') . '-' . str_pad((string)$seq, 4, '0', STR_PAD_LEFT);
             $pdo->prepare('UPDATE orders SET data=? WHERE id=?')->execute([json_encode($o, JSON_UNESCAPED_UNICODE), $id]);
         }
-        $pdf = buildInvoice($o, (string)$o['inv']);
+        $pdf = buildInvoice($o, (string)$o['inv'], ['phone' => (string)(setting($pdo, 'inv_phone') ?? ''), 'addr' => (string)(setting($pdo, 'inv_addr') ?? ''), 'logo' => logoJpeg()]);
         header('Content-Type: application/pdf'); header('Cache-Control: private, no-store');
         header('Content-Disposition: inline; filename="Facture-' . $o['inv'] . '.pdf"'); header('Content-Length: ' . strlen($pdf));
         echo $pdf; exit;
+    }
+
+    case 'inv_get':
+        out(['phone' => (string)(setting($pdo, 'inv_phone') ?? ''), 'addr' => (string)(setting($pdo, 'inv_addr') ?? ''), 'logo' => is_file(__DIR__ . '/uploads/logo.jpg') ? 'uploads/logo.jpg?v=' . filemtime(__DIR__ . '/uploads/logo.jpg') : '']);
+
+    case 'inv_set': {
+        if (!$isPost) { fail('POST requis.', 405); }
+        $b = body();
+        setSetting($pdo, 'inv_phone', mb_substr(trim((string)($b['phone'] ?? '')), 0, 40));
+        setSetting($pdo, 'inv_addr', mb_substr(trim((string)($b['addr'] ?? '')), 0, 120));
+        out(['ok' => true]);
+    }
+
+    case 'inv_logo': {
+        if (!$isPost) { fail('POST requis.', 405); }
+        if (empty($_FILES['logo']) || (int)$_FILES['logo']['error'] !== UPLOAD_ERR_OK) { fail('Image non reçue.'); }
+        if (!function_exists('imagecreatefromstring')) { fail('Le serveur ne sait pas traiter les images.'); }
+        $im = @imagecreatefromstring((string)file_get_contents($_FILES['logo']['tmp_name']));
+        if (!$im) { fail('Image illisible.'); }
+        $w = imagesx($im); $h = imagesy($im); $k = min(1, 400 / max($w, $h));
+        $nw = max(1, (int)round($w * $k)); $nh = max(1, (int)round($h * $k));
+        $dst = imagecreatetruecolor($nw, $nh); imagefill($dst, 0, 0, imagecolorallocate($dst, 255, 255, 255));
+        imagecopyresampled($dst, $im, 0, 0, 0, 0, $nw, $nh, $w, $h);
+        imagejpeg($dst, __DIR__ . '/uploads/logo.jpg', 90);
+        out(['ok' => true]);
+    }
+
+    case 'inv_logo_del': {
+        if (!$isPost) { fail('POST requis.', 405); }
+        @unlink(__DIR__ . '/uploads/logo.jpg');
+        out(['ok' => true]);
     }
 
     case 'bk_get':
