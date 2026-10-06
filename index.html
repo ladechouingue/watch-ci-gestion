@@ -45,7 +45,7 @@ h1{font-size:22px} h2{font-size:17px} h3{font-size:15px}
 button,input,select,textarea{font:inherit;color:inherit}
 button{cursor:pointer}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:nowrap}#topFilter:not(:empty){margin:10px 0 0}
 .brand small{display:block;color:var(--muted);font-size:12px;letter-spacing:.06em;text-transform:uppercase;font-weight:600}
 nav{position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--surface);border-top:1px solid var(--line);display:flex;padding:6px 8px calc(6px + env(safe-area-inset-bottom,0px))}
 nav button{flex:1;background:none;border:0;padding:8px 2px;border-radius:10px;color:var(--muted);font-weight:600;font-size:12.5px;min-width:0}
@@ -151,6 +151,9 @@ input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=hidden])
 select{-webkit-appearance:none;appearance:none;padding-right:34px;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 18px) 52%,calc(100% - 13px) 52%;background-size:5px 5px,5px 5px;background-repeat:no-repeat;text-overflow:ellipsis}
 a.btn.grow{display:block;text-align:center;flex:1}
 .invframe{width:100%;height:58vh;min-height:320px;border:1px solid var(--line);border-radius:12px;background:#fff}
+.setlist{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--surface)}
+.setrow{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;padding:14px;border:0;border-bottom:1px solid var(--line);background:none;color:var(--ink);font:inherit;text-align:left;text-decoration:none;cursor:pointer}
+.setrow:last-child{border-bottom:0}.setrow .pk_c{font-size:20px;line-height:1}
 </style>
 </head>
 <body>
@@ -159,6 +162,7 @@ a.btn.grow{display:block;text-align:center;flex:1}
     <div class="brand"><small>Gestion</small><h1>Watch Côte d'Ivoire</h1></div>
     <div id="topRight"></div>
   </div>
+  <div id="topFilter"></div>
   <nav id="nav" aria-label="Sections"></nav>
   <div id="banner"></div>
   <main id="main"><div class="empty">Chargement des données…</div></main>
@@ -181,7 +185,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=44;
+var PAGE_V=46;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -227,7 +231,8 @@ function renderNav(){
 function render(){
   renderNav();
   $("#banner").innerHTML=updInfo&&updInfo.available?'<div class="banner"><span>Une nouvelle version de l\'outil est disponible.</span><button class="btn small primary" data-act="doupdate">Mettre à jour</button></div>':"";
-  $("#topRight").innerHTML='<div class="row">'+(tab==="home"||tab==="expenses"?monthSelect():"")+'<button class="btn small" data-act="logout">Quitter</button></div>';
+  $("#topFilter").innerHTML=tab==="home"||tab==="expenses"?monthSelect():"";
+  $("#topRight").innerHTML='<div class="row"><button class="btn small" data-act="settings" aria-label="Paramètres" type="button" style="display:inline-flex;align-items:center;gap:6px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button></div>';
   var v={home:viewHome,orders:viewOrders,stock:viewStock,expenses:viewExpenses,clients:viewClients}[tab]();
   var keep=document.activeElement&&document.activeElement.id==="search"?document.activeElement.selectionStart:null;
   $("#main").innerHTML=v;
@@ -292,7 +297,7 @@ function viewHome(){
   var chK=Object.keys(ch).sort(function(a,b){return ch[b].r-ch[a].r||ch[b].n-ch[a].n}),chTot=chK.reduce(function(s,k){return s+ch[k].r},0)||1;
   var orig='<div class="card"><div class="row" style="justify-content:space-between;margin-bottom:6px"><h2>Ventes par canal</h2><span class="s" style="color:var(--muted);font-size:13px">'+esc(periodLabel(month))+'</span></div><div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Canal</th><th>Cmd</th><th>Ventes</th><th>Part</th></tr></thead><tbody>'+chK.map(function(k){var e=ch[k],pc=Math.round(e.r/chTot*100);return '<tr'+(e.n?'':' class="zero"')+'><td><b>'+esc(k)+'</b><div class="s" style="font-size:12px;color:var(--muted)">'+(e.n?'Panier '+F(e.r/e.n):'Aucune vente')+(e.x?' · Dépenses '+F(e.x)+' · Net '+F(e.p-e.x):'')+'</div><div class="bar"><i style="width:'+pc+'%"></i></div></td><td>'+e.n+'</td><td>'+F(e.r)+'</td><td>'+pc+' %</td></tr>'}).join("")+'</tbody></table></div></div>';
   var sv='<div class="card kpi"><span>Valeur du stock (au prix de vente)</span><b>'+F(stockValue)+'</b></div>';
-  return '<div style="display:flex;flex-direction:column;gap:18px">'+tiles+chart+'<div class="cols">'+todo+lowC+'</div><div class="cols">'+best+sv+'</div>'+orig+'<div class="foot"><a href="api.php?r=export">Télécharger une sauvegarde</a><button class="linkbtn" data-act="inv" type="button">Facture</button><button class="linkbtn" data-act="bk" type="button">Sauvegarde</button><span>Version '+esc(appVersion||"?")+'</span><button class="linkbtn" data-act="chkupd">Vérifier les mises à jour</button><button class="linkbtn" data-act="rollback" data-confirm="Revenir à la version précédente ?">Version précédente</button></div></div>';
+  return '<div style="display:flex;flex-direction:column;gap:18px">'+tiles+chart+'<div class="cols">'+todo+lowC+'</div><div class="cols">'+best+sv+'</div>'+orig+'<div class="foot"><span>Version '+esc(appVersion||"?")+'</span></div></div>';
 }
 function stockPill(p){var s=p.stock||0;return s<=0?'<span class="pill bad">Rupture</span>':s<=(p.alert==null?3:p.alert)?'<span class="pill warn">'+s+' en stock</span>':'<span class="pill good">'+s+' en stock</span>'}
 function orderRow(o){
@@ -441,6 +446,29 @@ function shareInvoice(){
   var file=new File([invBlob],invName,{type:"application/pdf"});
   if(navigator.canShare&&navigator.canShare({files:[file]})){navigator.share({files:[file],title:invName}).catch(function(e){if(e&&e.name!=="AbortError")toast("Partage impossible.")});return}
   var a=document.createElement("a");a.href=invUrl;a.download=invName;document.body.appendChild(a);a.click();a.remove();toast("Facture téléchargée.");
+}
+
+function settingsSheet(){
+  var chev='<span class="pk_c">›</span>';
+  openSheet('<h2>Paramètres</h2><div class="list setlist">'+
+    '<a class="setrow" href="api.php?r=export"><span>Télécharger une sauvegarde</span>'+chev+'</a>'+
+    '<button class="setrow" data-act="bk" type="button"><span>Sauvegarde par e-mail et restauration</span>'+chev+'</button>'+
+    '<button class="setrow" data-act="inv" type="button"><span>Facture (logo, téléphone, adresse)</span>'+chev+'</button>'+
+    '<button class="setrow" data-act="chkupd" type="button"><span>Vérifier les mises à jour</span>'+chev+'</button>'+
+    '<button class="setrow" data-act="rollback" data-confirm="Revenir à la version précédente ?" type="button"><span>Version précédente</span>'+chev+'</button>'+
+    '</div><div class="s" style="color:var(--muted);text-align:center">Version '+esc(appVersion||"?")+'</div>'+
+    '<div class="row"><button class="btn danger grow" data-act="logout" type="button">Quitter</button><button class="btn grow" data-act="close" type="button">Fermer</button></div>');
+}
+
+function invSheet(){
+  openSheet('<h2>Facture</h2><div class="empty">Chargement…</div>');
+  api("inv_get").then(function(j){
+    openSheet('<h2>Facture</h2><p class="s" style="color:var(--muted)">Ces informations apparaissent en haut de chaque facture. Sans logo choisi, le logo Watch Côte d\'Ivoire est utilisé.</p>'+
+      '<div class="row"><div class="thumb" style="width:72px;height:72px">'+(j.logo?'<img alt="" src="'+esc(j.logo)+'">':'<img alt="" src="logo.png">')+'</div><div class="grow" style="display:flex;flex-direction:column;gap:6px"><input id="iv_logo" type="file" accept="image/*"><div class="row">'+(j.logo?'<button class="btn small danger" data-act="ivlogodel" type="button">Revenir au logo par défaut</button>':'')+'</div></div></div>'+
+      '<label class="f">Téléphone (facultatif)<input id="iv_phone" type="tel" value="'+esc(j.phone)+'" placeholder="+225 …"></label>'+
+      '<label class="f">Adresse (facultatif)<input id="iv_addr" type="text" maxlength="120" value="'+esc(j.addr)+'" placeholder="Ex. Abidjan, Cocody"></label>'+
+      '<div class="row"><button class="btn grow" data-act="close" type="button">Fermer</button><button class="btn primary grow" data-act="ivsave" type="button">Enregistrer</button></div>');
+  }).catch(function(e){openSheet('<h2>Facture</h2><div class="empty">'+esc(e.message)+'</div><div class="row"><button class="btn grow" data-act="close">Fermer</button></div>')});
 }
 function seedStep(i,total){
   var el=$("#layer .empty");if(el)el.textContent="Chargement de vos catalogues… "+(total?(i+" / "+total):"");
@@ -656,6 +684,7 @@ document.addEventListener("click",function(e){
     case "setpaid":setPaid(id,b.dataset.v);break;
     case "bkrestore":{var f=$("#bk_file").files&&$("#bk_file").files[0];if(!f){toast("Choisissez le fichier de sauvegarde.");break}var fd=new FormData();fd.append("file",f);b.disabled=true;b.textContent="Restauration…";
       api("restore",undefined,fd).then(function(r){return refresh().then(function(){closeSheet();toast("Restauré : "+r.products+" produits, "+r.orders+" commandes, "+r.expenses+" dépenses, "+r.photos+" photos, "+(r.catalogues||0)+" catalogues.")})}).catch(function(e){b.disabled=false;b.textContent="Restaurer";toast(e.message)});break}
+    case "settings":settingsSheet();break;
     case "inv":invSheet();break;
     case "ivsave":{var lf=$("#iv_logo").files&&$("#iv_logo").files[0];b.disabled=true;b.textContent="Enregistrement…";
       api("inv_set",{phone:$("#iv_phone").value,addr:$("#iv_addr").value}).then(function(){if(!lf)return;var fd=new FormData();fd.append("logo",lf);return api("inv_logo",undefined,fd)}).then(function(){toast("Facture mise à jour.");closeSheet()}).catch(function(e){b.disabled=false;b.textContent="Enregistrer";toast(e.message)});break}
@@ -689,10 +718,10 @@ document.addEventListener("click",function(e){
     case "delp":delGroup();break;
     case "addsize":{var v=nSize($("#p_newsize").value);if(v){var stt=readSizes();if(!stt[v])stt[v]={on:true,stock:0};else stt[v].on=true;$("#sizes").innerHTML=sizeRows($("#p_cat").value,stt);$("#p_newsize").value=""}break}
     case "adj":adj(id,+b.dataset.d);break;
-    case "chkupd":checkUpdate(true);break;
+    case "chkupd":closeSheet();checkUpdate(true);break;
     case "doupdate":doUpdate(b);break;
     case "rollback":api("rollback",{}).then(function(j){toast("Version précédente restaurée.");setTimeout(function(){location.href=location.pathname+"?v=r"+j.version},900)}).catch(function(e){toast(e.message)});break;
-    case "logout":api("logout",{}).then(function(){products=[];orders=[];authed=false;renderAuth(false)});break;
+    case "logout":closeSheet();api("logout",{}).then(function(){products=[];orders=[];authed=false;renderAuth(false)});break;
     case "login":doAuth(false);break;
     case "setup":doAuth(true);break;
     case "close":closeSheet();break;
@@ -728,7 +757,7 @@ function doUpdate(btn){
 
 /* ---------- connexion et démarrage ---------- */
 function renderAuth(setup,msg){
-  $("#layer").innerHTML="";$("#nav").innerHTML="";$("#topRight").innerHTML="";
+  $("#layer").innerHTML="";$("#nav").innerHTML="";$("#topRight").innerHTML="";$("#topFilter").innerHTML="";
   $("#main").innerHTML='<div class="auth card"><h2>'+(setup?'Créer votre mot de passe':'Connexion')+'</h2><p style="margin:0;color:var(--muted)">'+(setup?'Première visite. Choisissez un mot de passe d\'au moins 8 caractères. Il protège vos ventes, vos clients et votre stock.':'Entrez votre mot de passe pour accéder à la gestion.')+'</p><label class="f">Mot de passe<input id="pw" type="password" autocomplete="'+(setup?'new-password':'current-password')+'"></label><div class="err" id="autherr">'+esc(msg||"")+'</div><button class="btn primary" data-act="'+(setup?'setup':'login')+'">'+(setup?'Créer et entrer':'Se connecter')+'</button></div>';
   var p=$("#pw");if(p)p.focus();
 }
