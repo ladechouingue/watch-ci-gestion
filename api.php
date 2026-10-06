@@ -241,7 +241,7 @@ function pdfStr(string $t): string {
 function money($n): string { return number_format((float)$n, 0, ',', ' ') . ' F'; }
 function logoJpeg(): ?array {
     if (!function_exists('imagecreatefromstring')) { return null; }
-    foreach ([__DIR__ . '/uploads/logo.jpg', __DIR__ . '/icon-192.png'] as $f) {
+    foreach ([__DIR__ . '/uploads/logo.jpg', __DIR__ . '/logo.png', __DIR__ . '/icon-192.png'] as $f) {
         if (!is_file($f)) { continue; }
         $im = @imagecreatefromstring((string)file_get_contents($f)); if (!$im) { continue; }
         $w = imagesx($im); $h = imagesy($im);
@@ -273,7 +273,8 @@ function buildInvoice(array $o, string $num, array $biz = []): string {
         $R(0, 0, 595, $hh, '0.87 0.39 0.06');
         $tx = 48;
         if ($logo) {
-            $k = 64 / max($logo['w'], $logo['h']); $dw = round($logo['w'] * $k, 2); $dh = round($logo['h'] * $k, 2);
+            $R(48, 23, 64, 64, '1 1 1');
+            $k = 52 / max($logo['w'], $logo['h']); $dw = round($logo['w'] * $k, 2); $dh = round($logo['h'] * $k, 2);
             $c .= "q $dw 0 0 $dh " . round(48 + (64 - $dw) / 2, 2) . " " . round($H - 23 - $dh - (64 - $dh) / 2, 2) . " cm /Im1 Do Q\n"; $tx = 126;
         }
         $T($tx, 50, 'Watch Côte d\'Ivoire', 22, true, 'l', '1 1 1');
