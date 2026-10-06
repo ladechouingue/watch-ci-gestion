@@ -142,24 +142,40 @@ function bkData(PDO $pdo, bool $photos = true): string {
             }
         }
     }
-    $set = ['bk_email' => (string)(setting($pdo, 'bk_email') ?? '')];
+    $set = [];
+    foreach ($pdo->query('SELECT k,v FROM settings') as $row) { if (!in_array($row['k'], ['lock_until', 'fails', 'bk_try'], true)) { $set[$row['k']] = (string)$row['v']; } }
     return (string)json_encode(['date' => date('c'), 'version' => localVersion(), 'products' => $prods, 'orders' => $l('orders'), 'expenses' => $l('expenses'), 'settings' => $set, 'photos' => $ph], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+}
+function bkZip(PDO $pdo, bool $withCats): ?string {
+    if (!class_exists('ZipArchive')) { return null; }
+    $tmp = tempnam(sys_get_temp_dir(), 'wci');
+    $z = new ZipArchive();
+    if ($z->open($tmp, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) { return null; }
+    $z->addFromString('backup.json', bkData($pdo, false));
+    foreach (glob(__DIR__ . '/uploads/*.jpg') ?: [] as $f) { $z->addFile($f, 'uploads/' . basename($f)); }
+    if ($withCats) { foreach (glob(__DIR__ . '/uploads/catalogues/*.pdf') ?: [] as $f) { $z->addFile($f, 'uploads/catalogues/' . basename($f)); } }
+    $z->close();
+    return $tmp;
 }
 function bkSend(PDO $pdo, string $to): bool {
     if (!filter_var($to, FILTER_VALIDATE_EMAIL)) { return false; }
+    @ini_set('memory_limit', '512M'); @set_time_limit(120);
     $host = preg_replace('/^www\./', '', (string)($_SERVER['HTTP_HOST'] ?? 'localhost'));
     $host = preg_replace('/^gestion\./', '', $host);
     $from = 'gestion@' . preg_replace('/[^A-Za-z0-9.-]/', '', $host);
-    $name = 'sauvegarde-watch-ci-' . date('Y-m-d') . '.json';
-    $data = bkData($pdo, true);
-    if (strlen($data) > 14000000) { $data = bkData($pdo, false); }
+    $note = '';
+    $zip = bkZip($pdo, true);
+    if ($zip !== null && filesize($zip) > 17000000) { @unlink($zip); $zip = bkZip($pdo, false); $note = "\nAttention : les catalogues PDF n'ont pas pu être inclus (fichier trop lourd pour un e-mail). Gardez-les de votre côté.\n"; }
+    if ($zip !== null) { $data = (string)file_get_contents($zip); @unlink($zip); $name = 'sauvegarde-complete-watch-ci-' . date('Y-m-d') . '.zip'; $ct = 'application/zip'; }
+    else { $data = bkData($pdo, true); $name = 'sauvegarde-watch-ci-' . date('Y-m-d') . '.json'; $ct = 'application/json'; }
     $b = 'wci' . bin2hex(random_bytes(8));
     $subject = '=?UTF-8?B?' . base64_encode('Sauvegarde Watch Côte d\'Ivoire - ' . date('d/m/Y')) . '?=';
     $h = "From: Watch CI Gestion <$from>\r\nMIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=\"$b\"";
     $msg = "--$b\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n"
-        . chunk_split(base64_encode("Bonjour,\n\nVoici la sauvegarde du jour de votre outil de gestion (produits avec photos, commandes, dépenses).\nGardez ce mail : il vous permet de tout retrouver en cas de problème.\n")) . "\r\n"
-        . "--$b\r\nContent-Type: application/json; name=\"$name\"\r\nContent-Transfer-Encoding: base64\r\nContent-Disposition: attachment; filename=\"$name\"\r\n\r\n"
+        . chunk_split(base64_encode("Bonjour,\n\nVoici la sauvegarde complète du jour de votre outil de gestion : produits et photos, commandes, dépenses, réglages et catalogues.\nGardez ce mail : dans « Sauvegarde » > « Restaurer », ce fichier remet tout en place sur un nouvel hébergement.\n" . $note)) . "\r\n"
+        . "--$b\r\nContent-Type: $ct; name=\"$name\"\r\nContent-Transfer-Encoding: base64\r\nContent-Disposition: attachment; filename=\"$name\"\r\n\r\n"
         . chunk_split(base64_encode($data)) . "\r\n--$b--";
+    unset($data);
     $ok = @mail($to, $subject, $msg, $h, '-f' . $from);
     if (!$ok) { $ok = @mail($to, $subject, $msg, $h); }
     if ($ok) { setSetting($pdo, 'bk_last', date('Y-m-d H:i')); }
@@ -214,7 +230,12 @@ switch ($r) {
         out(['products' => load($pdo, 'products'), 'orders' => load($pdo, 'orders'), 'expenses' => load($pdo, 'expenses')]);
 
     case 'export':
-        header('Content-Disposition: attachment; filename="sauvegarde-watch-ci-' . date('Y-m-d') . '.json"');
+                @ini_set('memory_limit', '512M');
+        $zp = bkZip($pdo, true);
+        if ($zp !== null) {
+            header('Content-Type: application/zip'); header('Content-Disposition: attachment; filename="sauvegarde-complete-watch-ci-' . date('Y-m-d') . '.zip"'); header('Content-Length: ' . filesize($zp));
+            readfile($zp); @unlink($zp); exit;
+        }
         header('Content-Type: application/json; charset=utf-8'); echo bkData($pdo, true); exit;
 
     case 'save': {
@@ -438,7 +459,14 @@ switch ($r) {
     case 'restore': {
         if (!$isPost) { fail('POST requis.', 405); }
         if (empty($_FILES['file']) || (int)$_FILES['file']['error'] !== UPLOAD_ERR_OK) { fail('Fichier non reçu (trop gros pour l\'hébergement ?).'); }
-        $j = json_decode((string)file_get_contents($_FILES['file']['tmp_name']), true);
+        @ini_set('memory_limit', '512M'); @set_time_limit(300);
+        $tmpf = $_FILES['file']['tmp_name']; $zr = null;
+        if (substr((string)file_get_contents($tmpf, false, null, 0, 2), 0, 2) === 'PK') {
+            if (!class_exists('ZipArchive')) { fail('Le serveur ne sait pas lire les fichiers .zip.'); }
+            $zr = new ZipArchive();
+            if ($zr->open($tmpf) !== true) { fail('Fichier .zip illisible.'); }
+            $j = json_decode((string)$zr->getFromName('backup.json'), true);
+        } else { $j = json_decode((string)file_get_contents($tmpf), true); }
         if (!is_array($j) || !isset($j['products'], $j['orders'], $j['expenses']) || !is_array($j['products']) || !is_array($j['orders']) || !is_array($j['expenses'])) { fail('Ce fichier n\'est pas une sauvegarde valide.'); }
         @file_put_contents($dataDir . '/avant-restauration.json', bkData($pdo, false));
         $pdo->beginTransaction();
@@ -463,9 +491,26 @@ switch ($r) {
                 file_put_contents($upDir . '/' . $f, $bin); $np++;
             }
         }
-        $em = $j['settings']['bk_email'] ?? '';
-        if (is_string($em) && $em !== '' && filter_var($em, FILTER_VALIDATE_EMAIL) && (string)setting($pdo, 'bk_email') === '') { setSetting($pdo, 'bk_email', $em); }
-        out(['ok' => true, 'products' => count($j['products']), 'orders' => count($j['orders']), 'expenses' => count($j['expenses']), 'photos' => $np]);
+        $nc = 0;
+        if ($zr !== null) {
+            @mkdir($upDir . '/catalogues', 0755, true);
+            for ($k = 0; $k < $zr->numFiles; $k++) {
+                $en = (string)$zr->getNameIndex($k);
+                $isPh = preg_match('#^uploads/((t_)?[a-f0-9]{24}\.jpg)$#', $en, $m);
+                $isCa = preg_match('#^uploads/catalogues/([A-Za-z0-9_-]{1,60}\.pdf)$#', $en, $m2);
+                if (!$isPh && !$isCa) { continue; }
+                $bin = (string)$zr->getFromIndex($k);
+                if ($isPh && substr($bin, 0, 2) === "\xFF\xD8") { file_put_contents($upDir . '/' . $m[1], $bin); $np++; }
+                if ($isCa && substr($bin, 0, 4) === '%PDF') { file_put_contents($upDir . '/catalogues/' . $m2[1], $bin); $nc++; }
+            }
+            $zr->close();
+        }
+        if (isset($j['settings']) && is_array($j['settings'])) {
+            foreach ($j['settings'] as $k => $v) {
+                if (is_string($k) && is_string($v) && preg_match('/^[A-Za-z0-9_:.\-]{1,100}$/', $k) && !in_array($k, ['lock_until', 'fails', 'bk_try'], true)) { setSetting($pdo, $k, $v); }
+            }
+        }
+        out(['ok' => true, 'products' => count($j['products']), 'orders' => count($j['orders']), 'expenses' => count($j['expenses']), 'photos' => $np, 'catalogues' => $nc]);
     }
 
     case 'bk_get':
