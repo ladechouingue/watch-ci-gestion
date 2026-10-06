@@ -291,6 +291,7 @@ function buildInvoice(array $o, string $num, array $biz = []): string {
         if (!empty($o['phone'])) { $T(48, $y + 4, 'Tél. ' . $o['phone'], 10); $y += 17; }
         $R(447, $y0 - 10, 100, 28, $paid ? '0.84 0.94 0.88' : '0.99 0.9 0.86');
         $T(497, $y0 + 8, $paid ? 'PAYÉE' : 'À PAYER', 11, true, 'c', $paid ? '0.1 0.45 0.25' : '0.7 0.2 0.1');
+        if (!empty($o['place'])) { $T(48, $y + 4, 'Livraison : ' . pdfFit((string)$o['place'], false, 10, 380), 10); $y += 17; }
         $y += 24;
         $R(48, $y, 499, 24, '0.94 0.95 0.94');
         $T(58, $y + 16, 'Article', 9, true); $T(360, $y + 16, 'Qté', 9, true, 'r'); $T(455, $y + 16, 'Prix unit.', 9, true, 'r'); $T(537, $y + 16, 'Total', 9, true, 'r');
