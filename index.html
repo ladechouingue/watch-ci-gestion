@@ -139,6 +139,12 @@ a{color:var(--accent)}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 .catname{display:flex;align-items:center;gap:8px;background:none;border:0;padding:0;font:inherit;color:var(--ink);text-align:left;cursor:pointer;min-width:0}.catname svg{flex:none;color:var(--accent);opacity:.85}
 .catacts{gap:6px;flex-wrap:nowrap}.catacts .btn{padding-left:10px;padding-right:10px;white-space:nowrap}
+.pickbtn{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;min-height:48px;padding:6px 10px;border:1px solid var(--line);border-radius:12px;background:var(--card,#fff);color:var(--ink);font:inherit;text-align:left;cursor:pointer}
+.pk_t{flex:1;min-width:0}.pkrow{display:flex;align-items:center;gap:8px}.pkrow small{color:var(--muted)}
+.pkbd{z-index:60}.pkbd .sheet{max-height:85%}.pkbd input[type=search]{width:100%}
+.pkitem{display:flex;align-items:center;gap:10px;width:100%;padding:8px 4px;border:0;border-bottom:1px solid var(--line);background:none;color:var(--ink);font:inherit;text-align:left;cursor:pointer}
+.pkitem .t,.pkitem .s{display:block}.pkitem .s{color:var(--muted);font-size:13px}
+.itemrow>.f:first-child{grid-column:1/-1}.itemrow,.itemrow:not(x){grid-template-columns:90px 1fr 44px!important}
 </style>
 </head>
 <body>
@@ -169,7 +175,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=27;
+var PAGE_V=28;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -373,7 +379,7 @@ function openSheet(html){
   var first=$("#layer input,#layer select");if(first&&window.innerWidth>760)first.focus();
 }
 function closeSheet(){$("#layer").innerHTML=""}
-document.addEventListener("keydown",function(e){if(e.key==="Escape")closeSheet();if(e.key==="Enter"&&e.target.id==="pw"){e.preventDefault();var b=$("[data-act=login],[data-act=setup]");if(b)b.click()}});
+document.addEventListener("keydown",function(e){if(e.key==="Escape"){if($("#pk_bd"))closePicker();else closeSheet()}if(e.key==="Enter"&&e.target.id==="pw"){e.preventDefault();var b=$("[data-act=login],[data-act=setup]");if(b)b.click()}});
 
 /* ---------- Catalogues PDF ---------- */
 function catSize(n){return (n/1048576).toFixed(1).replace(".",",")+" Mo"}
@@ -423,7 +429,32 @@ function copyCatLink(f){
   if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(full).then(ok,fallback);else fallback();
 }
 function productOptions(sel){return '<option value="">Choisir un produit</option>'+groups().map(function(g){return '<optgroup label="'+esc(g.base.name+(g.base.color?" · "+g.base.color:""))+'">'+g.items.map(function(p){return '<option value="'+p.id+'"'+(p.id===sel?' selected':'')+'>'+esc(p.size?p.size+" MM":"Taille unique")+' (stock '+(p.stock||0)+')</option>'}).join("")+'</optgroup>'}).join("")}
-function itemRowHtml(){return '<div class="itemrow"><label class="f">Article<select data-f="pid">'+productOptions("")+'</select></label><label class="f">Qté<input data-f="qty" type="number" min="1" value="1" inputmode="numeric"></label><label class="f">Prix unit.<input data-f="price" type="number" min="0" inputmode="numeric" placeholder="F"></label><button class="btn small" data-act="rmrow" aria-label="Retirer la ligne" type="button">×</button></div>'}
+var pickRow=null;
+function pickList(qv){
+  var ws=String(qv||"").toLowerCase().split(/\s+/).filter(Boolean),h="";
+  groups().forEach(function(g){g.items.forEach(function(p){
+    var hay=(p.name+" "+(p.color||"")+" "+(p.category||"")+" "+(p.size||"")+" mm").toLowerCase();
+    if(ws.every(function(w){return hay.indexOf(w)>=0})){
+      h+='<button type="button" class="pkitem" data-act="pickset" data-id="'+esc(p.id)+'">'+thumb(p,"")+'<span class="grow"><span class="t">'+esc(p.name+(p.color?" · "+p.color:""))+'</span><span class="s">'+esc(p.size?p.size+" MM":"Taille unique")+'</span></span><span class="pill '+((p.stock||0)>0?'good':'bad')+'">Stock '+(p.stock||0)+'</span></button>'}
+  })});
+  $("#pk_list").innerHTML=h||'<div class="empty">Aucun article trouvé.</div>';
+}
+function openPicker(row){
+  pickRow=row;closePicker();
+  var d=document.createElement("div");d.id="pk_bd";d.className="backdrop pkbd";
+  d.innerHTML='<div class="sheet" role="dialog" aria-modal="true"><div class="row"><h2 class="grow">Choisir un article</h2><button class="btn small" data-act="pickx" type="button">Fermer</button></div><input id="pk_q" type="search" placeholder="Rechercher (nom, couleur, taille…)" autocomplete="off"><div id="pk_list" class="list"></div></div>';
+  document.body.appendChild(d);pickList("");
+  if(window.innerWidth>760)$("#pk_q").focus();
+}
+function closePicker(){var d=$("#pk_bd");if(d)d.remove()}
+function pickSet(id){
+  var p=pById(id),row=pickRow;if(!p||!row){closePicker();return}
+  $('[data-f="pid"]',row).value=p.id;
+  $(".pk_t",row).innerHTML='<span class="pkrow">'+thumb(p,"sm")+'<span><b>'+esc(p.name+(p.color?" · ":"")+(p.color||"").replace(/^$/,""))+'</b><br><small>'+esc(p.size?p.size+" MM":"Taille unique")+' · stock '+(p.stock||0)+'</small></span></span>';
+  $('[data-f="price"]',row).value=p.price;
+  closePicker();updateTotals();
+}
+function itemRowHtml(){return '<div class="itemrow"><div class="f">Article<input type="hidden" data-f="pid" value=""><button type="button" class="pickbtn" data-act="pickp"><span class="pk_t">Choisir un article</span><span class="pk_c">▾</span></button></div><label class="f">Qté<input data-f="qty" type="number" min="1" value="1" inputmode="numeric"></label><label class="f">Prix unit.<input data-f="price" type="number" min="0" inputmode="numeric" placeholder="F"></label><button class="btn small" data-act="rmrow" aria-label="Retirer la ligne" type="button">×</button></div>'}
 function newOrderSheet(){
   if(!products.length){toast("Ajoutez d'abord au moins un produit dans Stock.");return}
   openSheet('<h2>Nouvelle commande</h2><div class="grid2"><label class="f">Date<input id="o_date" type="date" value="'+today()+'"></label><label class="f">Le client vient de<select id="o_channel">'+CHANNELS.map(function(c){return '<option>'+esc(c)+'</option>'}).join("")+'</select></label></div>'+
@@ -551,6 +582,7 @@ var uploadPhoto=function(file){
 
 /* ---------- événements ---------- */
 document.addEventListener("click",function(e){
+  if(e.target.id==="pk_bd"){closePicker();return}
   if(e.target.id==="bd"){closeSheet();return}
   var b=e.target.closest("[data-act]");if(!b)return;
   if(b.dataset.confirm&&!b.dataset.armed){b.dataset.armed="1";var t=b.textContent;b.textContent="Confirmer ?";setTimeout(function(){if(b.isConnected){b.textContent=t;delete b.dataset.armed}},3000);return}
@@ -560,6 +592,9 @@ document.addEventListener("click",function(e){
     case "ofilter":ofilter=b.dataset.v;render();break;
     case "neworder":newOrderSheet();break;
     case "order":orderSheet(id);break;
+    case "pickp":openPicker(b.closest(".itemrow"));break;
+    case "pickset":pickSet(b.dataset.id);break;
+    case "pickx":closePicker();break;
     case "addrow":$("#rows").insertAdjacentHTML("beforeend",itemRowHtml());break;
     case "rmrow":if(document.querySelectorAll("#rows .itemrow").length>1){b.closest(".itemrow").remove();updateTotals()}break;
     case "saveorder":saveOrder();break;
@@ -598,6 +633,7 @@ document.addEventListener("click",function(e){
 });
 document.addEventListener("input",function(e){
   if(e.target.id==="search"){q=e.target.value;render();return}
+  if(e.target.id==="pk_q"){pickList(e.target.value);return}
   if(e.target.id==="x_amount"||e.target.id==="x_qty"){updateUnit();return}
   if(e.target.closest&&e.target.closest("#rows")||e.target.id==="o_fee"||e.target.id==="o_mine")updateTotals();
 });
