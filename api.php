@@ -123,6 +123,47 @@ if ($r === 'login') {
     fail('Mot de passe incorrect.', 401);
 }
 
+
+function bkData(PDO $pdo): string {
+    $l = function (string $t) use ($pdo): array {
+        $rows = [];
+        foreach ($pdo->query("SELECT id,data FROM $t") as $row) { $d = json_decode($row['data'], true); if (is_array($d)) { $d['id'] = $row['id']; $rows[] = $d; } }
+        return $rows;
+    };
+    return (string)json_encode(['date' => date('c'), 'products' => $l('products'), 'orders' => $l('orders'), 'expenses' => $l('expenses')], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+}
+function bkSend(PDO $pdo, string $to): bool {
+    if (!filter_var($to, FILTER_VALIDATE_EMAIL)) { return false; }
+    $host = preg_replace('/^www\./', '', (string)($_SERVER['HTTP_HOST'] ?? 'localhost'));
+    $host = preg_replace('/^gestion\./', '', $host);
+    $from = 'gestion@' . preg_replace('/[^A-Za-z0-9.-]/', '', $host);
+    $name = 'sauvegarde-watch-ci-' . date('Y-m-d') . '.json';
+    $b = 'wci' . bin2hex(random_bytes(8));
+    $subject = '=?UTF-8?B?' . base64_encode('Sauvegarde Watch Côte d\'Ivoire - ' . date('d/m/Y')) . '?=';
+    $h = "From: Watch CI Gestion <$from>\r\nMIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=\"$b\"";
+    $msg = "--$b\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n"
+        . chunk_split(base64_encode("Bonjour,\n\nVoici la sauvegarde du jour de votre outil de gestion (produits, commandes, dépenses).\nGardez ce mail : il vous permet de tout retrouver en cas de problème.\n")) . "\r\n"
+        . "--$b\r\nContent-Type: application/json; name=\"$name\"\r\nContent-Transfer-Encoding: base64\r\nContent-Disposition: attachment; filename=\"$name\"\r\n\r\n"
+        . chunk_split(base64_encode(bkData($pdo))) . "\r\n--$b--";
+    $ok = @mail($to, $subject, $msg, $h, '-f' . $from);
+    if (!$ok) { $ok = @mail($to, $subject, $msg, $h); }
+    if ($ok) { setSetting($pdo, 'bk_last', date('Y-m-d H:i')); }
+    return (bool)$ok;
+}
+function bkToken(PDO $pdo): string {
+    $t = setting($pdo, 'bk_token');
+    if ($t === null || $t === '') { $t = bin2hex(random_bytes(16)); setSetting($pdo, 'bk_token', $t); }
+    return $t;
+}
+
+if ($r === 'bk_cron') {
+    $t = (string)($_GET['t'] ?? ''); $real = setting($pdo, 'bk_token');
+    if ($real === null || $real === '' || !hash_equals($real, $t)) { fail('Accès refusé.', 403); }
+    $to = (string)(setting($pdo, 'bk_email') ?? '');
+    if ($to === '') { fail('Aucune adresse enregistrée.'); }
+    out(['sent' => bkSend($pdo, $to)]);
+}
+
 if ($r === 'logout') { $_SESSION = []; session_destroy(); out(['ok' => true]); }
 
 if (!$authed) { fail('Connexion requise.', 401); }
@@ -150,6 +191,11 @@ function dropPhoto(PDO $pdo, string $photo, string $exceptId): void {
 
 switch ($r) {
     case 'state':
+        $bkTo = (string)(setting($pdo, 'bk_email') ?? '');
+        if ($bkTo !== '' && substr((string)setting($pdo, 'bk_last'), 0, 10) !== date('Y-m-d') && (int)setting($pdo, 'bk_try') !== (int)date('Ymd') * 100 + (int)date('G')) {
+            setSetting($pdo, 'bk_try', (string)((int)date('Ymd') * 100 + (int)date('G')));
+            try { bkSend($pdo, $bkTo); } catch (Throwable $e) { }
+        }
         out(['products' => load($pdo, 'products'), 'orders' => load($pdo, 'orders'), 'expenses' => load($pdo, 'expenses')]);
 
     case 'export':
@@ -372,6 +418,28 @@ switch ($r) {
         $pdo->prepare('DELETE FROM settings WHERE k IN (?,?)')->execute(['catlabel:' . $f, 'catord:' . $f]);
         setSetting($pdo, 'cat_seeded', '1');
         out(['ok' => true]);
+    }
+
+    case 'bk_get':
+        $proto = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $dir = rtrim(str_replace('\\', '/', dirname((string)($_SERVER['SCRIPT_NAME'] ?? '/api.php'))), '/');
+        out(['email' => (string)(setting($pdo, 'bk_email') ?? ''), 'last' => (string)(setting($pdo, 'bk_last') ?? ''),
+             'cron' => 'curl -s "' . $proto . '://' . ($_SERVER['HTTP_HOST'] ?? '') . $dir . '/api.php?r=bk_cron&t=' . bkToken($pdo) . '" > /dev/null 2>&1']);
+
+    case 'bk_set': {
+        if (!$isPost) { fail('POST requis.', 405); }
+        $e = trim((string)(body()['email'] ?? ''));
+        if ($e !== '' && !filter_var($e, FILTER_VALIDATE_EMAIL)) { fail('Adresse e-mail invalide.'); }
+        setSetting($pdo, 'bk_email', $e);
+        out(['ok' => true]);
+    }
+
+    case 'bk_test': {
+        if (!$isPost) { fail('POST requis.', 405); }
+        $e = (string)(setting($pdo, 'bk_email') ?? '');
+        if ($e === '') { fail('Enregistrez d\'abord une adresse e-mail.'); }
+        if (!bkSend($pdo, $e)) { fail('Envoi impossible depuis ce serveur. Contactez l\'hébergeur (LWS) ou vérifiez l\'adresse.'); }
+        out(['ok' => true, 'last' => (string)setting($pdo, 'bk_last')]);
     }
 
     default: fail('Route inconnue.', 404);
