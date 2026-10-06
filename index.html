@@ -139,7 +139,8 @@ a{color:var(--accent)}
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 .catname{display:flex;align-items:center;gap:8px;background:none;border:0;padding:0;font:inherit;color:var(--ink);text-align:left;cursor:pointer;min-width:0}.catname svg{flex:none;color:var(--accent);opacity:.85}
 .catacts{gap:6px;flex-wrap:nowrap}.catacts .btn{padding-left:10px;padding-right:10px;white-space:nowrap}
-.pickbtn{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;min-height:48px;padding:6px 10px;border:1px solid var(--line);border-radius:12px;background:var(--card,#fff);color:var(--ink);font:inherit;text-align:left;cursor:pointer}
+.pickbtn{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;min-height:48px;padding:6px 10px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);font:inherit;text-align:left;cursor:pointer}
+.pickbtn .pk_t{color:var(--ink);font-weight:500}.pickbtn .pk_c{color:var(--muted)}
 .pk_t{flex:1;min-width:0}.pkrow{display:flex;align-items:center;gap:8px}.pkrow small{color:var(--muted)}
 .pkbd{z-index:60}.pkbd .sheet{max-height:85%}.pkbd input[type=search]{width:100%}
 .pkitem{display:flex;align-items:center;gap:10px;width:100%;padding:8px 4px;border:0;border-bottom:1px solid var(--line);background:none;color:var(--ink);font:inherit;text-align:left;cursor:pointer}
@@ -175,7 +176,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=28;
+var PAGE_V=29;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
