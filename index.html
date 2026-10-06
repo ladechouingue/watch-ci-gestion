@@ -176,7 +176,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=31;
+var PAGE_V=32;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -454,22 +454,25 @@ function closePicker(){var d=$("#pk_bd");if(d)d.remove()}
 function pickSet(id){
   var p=pById(id),row=pickRow;if(!p||!row){closePicker();return}
   $('[data-f="pid"]',row).value=p.id;
-  $(".pk_t",row).innerHTML='<span class="pkrow">'+thumb(p,"sm")+'<span><b>'+esc(p.name+(p.color?" · ":"")+(p.color||"").replace(/^$/,""))+'</b><br><small>'+esc(p.size?p.size+" MM":"Taille unique")+' · stock '+(p.stock||0)+'</small></span></span>';
+  $(".pk_t",row).innerHTML=pickLabel(p);
   $('[data-f="price"]',row).value=p.price;
   closePicker();updateTotals();
 }
-function itemRowHtml(){return '<div class="itemrow"><div class="f">Article<input type="hidden" data-f="pid" value=""><button type="button" class="pickbtn" data-act="pickp"><span class="pk_t">Choisir un article</span><span class="pk_c">▾</span></button></div><label class="f">Qté<input data-f="qty" type="number" min="1" value="1" inputmode="numeric"></label><label class="f">Prix unit.<input data-f="price" type="number" min="0" inputmode="numeric" placeholder="F"></label><button class="btn small" data-act="rmrow" aria-label="Retirer la ligne" type="button">×</button></div>'}
-function newOrderSheet(){
+function pickLabel(p){return '<span class="pkrow">'+thumb(p,"sm")+'<span><b>'+esc(p.name+(p.color?" · "+p.color:""))+'</b><br><small>'+esc(p.size?p.size+" MM":"Taille unique")+' · stock '+(p.stock||0)+'</small></span></span>'}
+function itemRowHtml(it){var p=it&&pById(it.pid);return '<div class="itemrow"><div class="f">Article<input type="hidden" data-f="pid" value="'+(p?esc(p.id):"")+'"><button type="button" class="pickbtn" data-act="pickp"><span class="pk_t">'+(p?pickLabel(p):"Choisir un article")+'</span><span class="pk_c">▾</span></button></div><label class="f">Qté<input data-f="qty" type="number" min="1" value="'+(it?it.qty:1)+'" inputmode="numeric"></label><label class="f">Prix unit.<input data-f="price" type="number" min="0" inputmode="numeric" placeholder="F" value="'+(it?it.price:"")+'"></label><button class="btn small" data-act="rmrow" aria-label="Retirer la ligne" type="button">×</button></div>'}
+function newOrderSheet(oid){
+  var eo=oid&&orders.find(function(x){return x.id===oid});
   if(!products.length){toast("Ajoutez d'abord au moins un produit dans Stock.");return}
-  openSheet('<h2>Nouvelle commande</h2><div class="grid2"><label class="f">Date<input id="o_date" type="date" value="'+today()+'"></label><label class="f">Le client vient de<select id="o_channel">'+CHANNELS.map(function(c){return '<option>'+esc(c)+'</option>'}).join("")+'</select></label></div>'+
-   '<div class="grid2"><label class="f">Nom du client<input id="o_name" type="text" autocomplete="off"></label><label class="f">Téléphone<input id="o_phone" type="tel" inputmode="tel"></label></div>'+
-   '<div id="rows" style="display:flex;flex-direction:column;gap:8px">'+itemRowHtml()+'</div><button class="btn small" data-act="addrow" type="button" style="align-self:flex-start">+ Ajouter un article</button>'+
-   '<label class="f">Coût de la livraison (F)<input id="o_fee" type="number" min="0" inputmode="numeric" placeholder="0"></label>'+
-   '<label class="row" style="gap:8px"><input id="o_mine" type="checkbox" style="width:auto"> À ma charge <span class="s" style="color:var(--muted);font-size:13px">(décoché = payé par le client)</span></label>'+
-   '<label class="f">Note<input id="o_note" type="text"></label>'+
-   '<label class="row" style="gap:8px"><input id="o_paid" type="checkbox" style="width:auto"> Commande déjà payée</label>'+
+  openSheet('<h2>'+(eo?'Modifier la commande':'Nouvelle commande')+'</h2><div class="grid2"><label class="f">Date<input id="o_date" type="date" value="'+(eo?esc(eo.date||today()):today())+'"></label><label class="f">Le client vient de<select id="o_channel">'+CHANNELS.map(function(c){return '<option'+(eo&&(eo.channel===c||(c==="Site web"&&eo.channel==="Site watchcotedivoire.com"))?' selected':'')+'>'+esc(c)+'</option>'}).join("")+'</select></label></div>'+
+   '<div class="grid2"><label class="f">Nom du client<input id="o_name" type="text" autocomplete="off" value="'+(eo?esc(eo.customer||""):"")+'"></label><label class="f">Téléphone<input id="o_phone" type="tel" inputmode="tel" value="'+(eo?esc(eo.phone||""):"")+'"></label></div>'+
+   '<div id="rows" style="display:flex;flex-direction:column;gap:8px">'+(eo&&(eo.items||[]).length?eo.items.map(itemRowHtml).join(""):itemRowHtml())+'</div><button class="btn small" data-act="addrow" type="button" style="align-self:flex-start">+ Ajouter un article</button>'+
+   '<label class="f">Coût de la livraison (F)<input id="o_fee" type="number" min="0" inputmode="numeric" placeholder="0" value="'+(eo?(eo.dcost||eo.fee||0):"")+'"></label>'+
+   '<label class="row" style="gap:8px"><input id="o_mine" type="checkbox" style="width:auto"'+(eo&&eo.fee?' checked':'')+'> À ma charge <span class="s" style="color:var(--muted);font-size:13px">(décoché = payé par le client)</span></label>'+
+   '<label class="f">Note<input id="o_note" type="text" value="'+(eo?esc(eo.note||""):"")+'"></label>'+
+   '<label class="row" style="gap:8px"><input id="o_paid" type="checkbox" style="width:auto"'+(eo&&eo.paid?' checked':'')+'> Commande déjà payée</label>'+
    '<div class="card"><div class="sum"><span>Total</span><b class="num" id="o_total">0 F</b></div></div>'+
-   '<div class="row"><button class="btn grow" data-act="close" type="button">Annuler</button><button class="btn primary grow" data-act="saveorder" type="button">Enregistrer</button></div>');
+   '<div class="row"><button class="btn grow" data-act="close" type="button">Annuler</button><button class="btn primary grow" data-act="saveorder" data-id="'+(eo?esc(eo.id):"")+'" type="button">Enregistrer</button></div>');
+  if(eo)updateTotals();
 }
 function readRows(){
   return Array.prototype.map.call(document.querySelectorAll("#rows .itemrow"),function(r){
@@ -481,13 +484,19 @@ function updateTotals(){
   var rows=readRows(),t=0,c=0;rows.forEach(function(r){if(r.p&&r.qty){var pr=isNaN(r.price)?r.p.price:r.price;t+=r.qty*pr;c+=r.qty*(r.p.cost||0)}});
     var a=$("#o_total"),b=$("#o_profit");if(a)a.textContent=F(t);var m=$("#o_mine"),fee=m&&m.checked?(parseFloat(($("#o_fee")||{}).value)||0):0;if(b)b.textContent=F(t-c-fee);
 }
-var saveOrder=guard(function(){
+var saveOrder=guard(function(oid){
+  var eo=oid&&orders.find(function(x){return x.id===oid});
   var rows=readRows().filter(function(r){return r.p&&r.qty>0});
   if(!rows.length){toast("Choisissez au moins un article.");return}
   var name=$("#o_name").value.trim();if(!name){toast("Indiquez le nom du client.");return}
   if($("#o_fee").value.trim()===""){toast("Indiquez le coût de la livraison (0 s'il n'y en a pas).");return}
   var items=rows.map(function(r){return {pid:r.pid,label:label(r.p),qty:r.qty,price:isNaN(r.price)?r.p.price:r.price,cost:r.p.cost||0}});
-  var o={date:$("#o_date").value||today(),customer:name,phone:$("#o_phone").value.trim(),channel:$("#o_channel").value,items:items,dcost:parseFloat($("#o_fee").value)||0,fee:$("#o_mine").checked?(parseFloat($("#o_fee").value)||0):0,paid:$("#o_paid").checked,note:$("#o_note").value.trim(),status:"a_livrer",createdAt:new Date().toISOString()};
+  var o={date:$("#o_date").value||today(),customer:name,phone:$("#o_phone").value.trim(),channel:$("#o_channel").value,items:items,dcost:parseFloat($("#o_fee").value)||0,fee:$("#o_mine").checked?(parseFloat($("#o_fee").value)||0):0,paid:$("#o_paid").checked,note:$("#o_note").value.trim(),status:eo?eo.status:"a_livrer",createdAt:eo?(eo.createdAt||new Date().toISOString()):new Date().toISOString()};
+  if(eo){
+    var d={};(eo.items||[]).forEach(function(i){d[i.pid]=(d[i.pid]||0)+i.qty});items.forEach(function(i){d[i.pid]=(d[i.pid]||0)-i.qty});
+    var list=Object.keys(d).filter(function(k){return d[k]}).map(function(k){return {pid:k,delta:d[k]}});
+    return api("save",{coll:"orders",id:eo.id,data:o}).then(function(){return list.length?api("adjust",{items:list}):0}).then(refresh).then(function(){closeSheet();toast("Commande modifiée.")});
+  }
   var id=uid("o");
   return api("save",{coll:"orders",id:id,data:o}).then(function(){return adjustStock(items,-1)}).then(function(){closeSheet();toast("Commande enregistrée.")});
 });
@@ -511,8 +520,9 @@ function orderSheet(id){
    (o.status==="a_livrer"?'<button class="btn primary grow" data-act="setstatus" data-id="'+id+'" data-v="livre">Marquer livrée</button>':'')+
    (!o.paid&&o.status!=="annule"?'<button class="btn grow" data-act="setpaid" data-id="'+id+'">Marquer payée</button>':'')+
    '</div><div class="row">'+
+   (o.status!=="annule"?'<button class="btn grow" data-act="editorder" data-id="'+id+'">Modifier</button>':'')+
    (o.status!=="annule"?'<button class="btn danger grow" data-act="cancelorder" data-id="'+id+'" data-confirm="Annuler la commande et remettre en stock ?">Annuler la commande</button>':'<button class="btn danger grow" data-act="delorder" data-id="'+id+'" data-confirm="Supprimer définitivement ?">Supprimer</button>')+
-   '<button class="btn grow" data-act="close">Fermer</button></div>');
+   (o.status!=="annule"?'</div><div class="row"><button class="btn grow" data-act="close">Fermer</button></div>':'<button class="btn grow" data-act="close">Fermer</button></div>'));
 }
 var setStatus=guard(function(id,v){return patch("orders",id,{status:v}).then(function(){closeSheet()})});
 var setPaid=guard(function(id){return patch("orders",id,{paid:true}).then(function(){closeSheet()})});
@@ -601,9 +611,10 @@ document.addEventListener("click",function(e){
     case "pickx":closePicker();break;
     case "addrow":$("#rows").insertAdjacentHTML("beforeend",itemRowHtml());break;
     case "rmrow":if(document.querySelectorAll("#rows .itemrow").length>1){b.closest(".itemrow").remove();updateTotals()}break;
-    case "saveorder":saveOrder();break;
+    case "saveorder":saveOrder(id||null);break;
     case "setstatus":setStatus(id,b.dataset.v);break;
     case "setpaid":setPaid(id);break;
+    case "editorder":newOrderSheet(id);break;
     case "cancelorder":cancelOrder(id);break;
     case "delorder":delOrder(id);break;
     case "newexp":expenseSheet();break;
