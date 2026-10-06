@@ -220,7 +220,7 @@ function dropPhoto(PDO $pdo, string $photo, string $exceptId): void {
     foreach (photoFiles($photo) as $f) { if (is_file($f)) { @unlink($f); } }
 }
 
-/* ---------- Facture PDF (sans bibliothèque) ---------- */
+/* ---------- Reçu PDF (sans bibliothèque) ---------- */
 function pdfW(string $t, bool $b, float $sz): float {
     static $r = [278,278,355,556,556,889,667,191,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,556,278,278,584,584,584,556,1015,667,667,722,722,667,611,778,722,278,500,667,556,833,722,778,667,778,722,667,611,722,667,944,667,667,611,278,278,278,469,556,333,556,556,500,556,556,278,556,556,222,222,500,222,833,556,556,556,556,333,500,278,556,500,722,500,500,500,334,260,334,584];
     static $d = [278,333,474,556,556,889,722,238,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,556,333,333,584,584,584,611,975,722,722,722,722,667,611,778,722,278,556,722,611,833,722,778,667,778,722,667,611,722,667,944,667,667,611,333,278,333,584,556,333,556,611,556,611,556,333,611,611,278,278,556,278,889,611,611,611,611,389,556,333,611,556,778,556,556,500,389,280,389,584];
@@ -281,11 +281,11 @@ function buildInvoice(array $o, string $num, array $biz = []): string {
         $T($tx, 70, 'Bracelets et accessoires Apple Watch', 10, false, 'l', '1 1 1');
         $T($tx, 86, $line2, 10, false, 'l', '1 1 1');
         if (!empty($biz['addr'])) { $T($tx, 102, pdfFit((string)$biz['addr'], false, 10, 380), 10, false, 'l', '1 1 1'); }
-        $T(547, 50, 'FACTURE', 22, true, 'r', '1 1 1');
-        $T(547, 70, 'N° ' . $num, 11, false, 'r', '1 1 1');
+        $T(547, 50, 'REÇU', 22, true, 'r', '1 1 1');
+        $T(547, 70, 'N° ' . preg_replace('/^F-/', 'R-', $num), 11, false, 'r', '1 1 1');
         $T(547, 86, 'Date : ' . date('d/m/Y', strtotime((string)($o['date'] ?? 'now'))), 10, false, 'r', '1 1 1');
         $y0 = $hh + 36;
-        $T(48, $y0, 'FACTURÉ À', 9, true, 'l', '0.45 0.5 0.47');
+        $T(48, $y0, 'CLIENT', 9, true, 'l', '0.45 0.5 0.47');
         $T(48, $y0 + 19, pdfFit((string)($o['customer'] ?? 'Client'), true, 14, 360), 14, true);
         $y = $y0 + 33;
         if (!empty($o['phone'])) { $T(48, $y + 4, 'Tél. ' . $o['phone'], 10); $y += 17; }
@@ -318,6 +318,7 @@ function buildInvoice(array $o, string $num, array $biz = []): string {
             $y += 4;
         } else { $y += 34; }
         $T(297, $y, 'Merci pour votre confiance !', 11, true, 'c', '0.87 0.39 0.06');
+        $y += 16; $T(297, $y, 'Reçu de commande - document non fiscal, ne vaut pas facture', 8, false, 'c', '0.45 0.5 0.47');
         return [$c, $y];
     };
     [, $yEnd] = $render(2000.0);
@@ -647,7 +648,7 @@ switch ($r) {
         }
         $pdf = buildInvoice($o, (string)$o['inv'], ['phone' => (string)(setting($pdo, 'inv_phone') ?? ''), 'addr' => (string)(setting($pdo, 'inv_addr') ?? ''), 'logo' => logoJpeg()]);
         header('Content-Type: application/pdf'); header('Cache-Control: private, no-store');
-        header('Content-Disposition: inline; filename="Facture-' . $o['inv'] . '.pdf"'); header('Content-Length: ' . strlen($pdf));
+        header('Content-Disposition: inline; filename="Recu-' . $o['inv'] . '.pdf"'); header('Content-Length: ' . strlen($pdf));
         echo $pdf; exit;
     }
 

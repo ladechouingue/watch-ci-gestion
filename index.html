@@ -185,7 +185,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=46;
+var PAGE_V=47;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -430,22 +430,22 @@ function bkSheet(){
   }).catch(function(e){openSheet('<h2>Sauvegarde par e-mail</h2><div class="empty">'+esc(e.message)+'</div><div class="row"><button class="btn grow" data-act="close">Fermer</button></div>')});
 }
 
-var invBlob=null,invName="Facture.pdf",invUrl="";
+var invBlob=null,invName="Reçu.pdf",invUrl="";
 function invoiceSheet(id,who){
   toast("Préparation de la facture…");
   fetch("api.php?r=invoice&id="+encodeURIComponent(id),{credentials:"same-origin"}).then(function(r){if(!r.ok)throw new Error("x");return r.blob()}).then(function(bl){
-    invBlob=bl;invName="Facture "+String(who||"").replace(/[\/\\:*?"<>|]/g," ").replace(/\s+/g," ").trim()+".pdf";
+    invBlob=bl;invName="Reçu "+String(who||"").replace(/[\/\\:*?"<>|]/g," ").replace(/\s+/g," ").trim()+".pdf";
     if(invUrl)URL.revokeObjectURL(invUrl);invUrl=URL.createObjectURL(bl);
     $("#toast").hidden=true;
-    openSheet('<h2>Facture</h2><iframe class="invframe" src="'+invUrl+'#toolbar=0&navpanes=0" title="Facture"></iframe>'+
+    openSheet('<h2>Reçu</h2><iframe class="invframe" src="'+invUrl+'#toolbar=0&navpanes=0" title="Reçu"></iframe>'+
       '<div class="row"><button class="btn grow" data-act="close" type="button">Fermer</button><button class="btn primary grow" data-act="invshare" type="button">Partager</button></div>');
-  }).catch(function(){toast("Facture impossible pour le moment.")});
+  }).catch(function(){toast("Reçu impossible pour le moment.")});
 }
 function shareInvoice(){
   if(!invBlob)return;
   var file=new File([invBlob],invName,{type:"application/pdf"});
   if(navigator.canShare&&navigator.canShare({files:[file]})){navigator.share({files:[file],title:invName}).catch(function(e){if(e&&e.name!=="AbortError")toast("Partage impossible.")});return}
-  var a=document.createElement("a");a.href=invUrl;a.download=invName;document.body.appendChild(a);a.click();a.remove();toast("Facture téléchargée.");
+  var a=document.createElement("a");a.href=invUrl;a.download=invName;document.body.appendChild(a);a.click();a.remove();toast("Reçu téléchargé.");
 }
 
 function settingsSheet(){
@@ -453,7 +453,7 @@ function settingsSheet(){
   openSheet('<h2>Paramètres</h2><div class="list setlist">'+
     '<a class="setrow" href="api.php?r=export"><span>Télécharger une sauvegarde</span>'+chev+'</a>'+
     '<button class="setrow" data-act="bk" type="button"><span>Sauvegarde par e-mail et restauration</span>'+chev+'</button>'+
-    '<button class="setrow" data-act="inv" type="button"><span>Facture (logo, téléphone, adresse)</span>'+chev+'</button>'+
+    '<button class="setrow" data-act="inv" type="button"><span>Reçu (logo, téléphone, adresse)</span>'+chev+'</button>'+
     '<button class="setrow" data-act="chkupd" type="button"><span>Vérifier les mises à jour</span>'+chev+'</button>'+
     '<button class="setrow" data-act="rollback" data-confirm="Revenir à la version précédente ?" type="button"><span>Version précédente</span>'+chev+'</button>'+
     '</div><div class="s" style="color:var(--muted);text-align:center">Version '+esc(appVersion||"?")+'</div>'+
@@ -461,14 +461,14 @@ function settingsSheet(){
 }
 
 function invSheet(){
-  openSheet('<h2>Facture</h2><div class="empty">Chargement…</div>');
+  openSheet('<h2>Reçu</h2><div class="empty">Chargement…</div>');
   api("inv_get").then(function(j){
-    openSheet('<h2>Facture</h2><p class="s" style="color:var(--muted)">Ces informations apparaissent en haut de chaque facture. Sans logo choisi, le logo Watch Côte d\'Ivoire est utilisé.</p>'+
+    openSheet('<h2>Reçu</h2><p class="s" style="color:var(--muted)">Ces informations apparaissent en haut de chaque reçu. Sans logo choisi, le logo Watch Côte d\'Ivoire est utilisé.</p>'+
       '<div class="row"><div class="thumb" style="width:72px;height:72px">'+(j.logo?'<img alt="" src="'+esc(j.logo)+'">':'<img alt="" src="logo.png">')+'</div><div class="grow" style="display:flex;flex-direction:column;gap:6px"><input id="iv_logo" type="file" accept="image/*"><div class="row">'+(j.logo?'<button class="btn small danger" data-act="ivlogodel" type="button">Revenir au logo par défaut</button>':'')+'</div></div></div>'+
       '<label class="f">Téléphone (facultatif)<input id="iv_phone" type="tel" value="'+esc(j.phone)+'" placeholder="+225 …"></label>'+
       '<label class="f">Adresse (facultatif)<input id="iv_addr" type="text" maxlength="120" value="'+esc(j.addr)+'" placeholder="Ex. Abidjan, Cocody"></label>'+
       '<div class="row"><button class="btn grow" data-act="close" type="button">Fermer</button><button class="btn primary grow" data-act="ivsave" type="button">Enregistrer</button></div>');
-  }).catch(function(e){openSheet('<h2>Facture</h2><div class="empty">'+esc(e.message)+'</div><div class="row"><button class="btn grow" data-act="close">Fermer</button></div>')});
+  }).catch(function(e){openSheet('<h2>Reçu</h2><div class="empty">'+esc(e.message)+'</div><div class="row"><button class="btn grow" data-act="close">Fermer</button></div>')});
 }
 function seedStep(i,total){
   var el=$("#layer .empty");if(el)el.textContent="Chargement de vos catalogues… "+(total?(i+" / "+total):"");
@@ -586,7 +586,7 @@ function orderSheet(id){
    '<div class="row">'+
    (o.status==="a_livrer"?'<button class="btn primary grow" data-act="setstatus" data-id="'+id+'" data-v="livre">Marquer livrée</button>':o.status==="livre"?'<button class="btn grow" data-act="setstatus" data-id="'+id+'" data-v="a_livrer">Remettre à livrer</button>':'')+
    (o.status!=="annule"?(o.paid?'<button class="btn grow" data-act="setpaid" data-id="'+id+'" data-v="0">Marquer non payée</button>':'<button class="btn grow" data-act="setpaid" data-id="'+id+'" data-v="1">Marquer payée</button>'):'')+
-   (o.status!=="annule"?'<div class="row"><button class="btn grow" data-act="invoice" data-id="'+id+'" data-n="'+esc(o.customer||"client")+'" type="button">Facture</button></div>':'')+
+   (o.status!=="annule"?'<div class="row"><button class="btn grow" data-act="invoice" data-id="'+id+'" data-n="'+esc(o.customer||"client")+'" type="button">Reçu</button></div>':'')+
    '</div><div class="row">'+
    (o.status!=="annule"?'<button class="btn grow" data-act="editorder" data-id="'+id+'">Modifier</button>':'')+
    (o.status!=="annule"?'<button class="btn danger grow" data-act="cancelorder" data-id="'+id+'" data-confirm="Annuler la commande et remettre en stock ?">Annuler la commande</button>':'<button class="btn danger grow" data-act="delorder" data-id="'+id+'" data-confirm="Supprimer définitivement ?">Supprimer</button>')+
@@ -687,7 +687,7 @@ document.addEventListener("click",function(e){
     case "settings":settingsSheet();break;
     case "inv":invSheet();break;
     case "ivsave":{var lf=$("#iv_logo").files&&$("#iv_logo").files[0];b.disabled=true;b.textContent="Enregistrement…";
-      api("inv_set",{phone:$("#iv_phone").value,addr:$("#iv_addr").value}).then(function(){if(!lf)return;var fd=new FormData();fd.append("logo",lf);return api("inv_logo",undefined,fd)}).then(function(){toast("Facture mise à jour.");closeSheet()}).catch(function(e){b.disabled=false;b.textContent="Enregistrer";toast(e.message)});break}
+      api("inv_set",{phone:$("#iv_phone").value,addr:$("#iv_addr").value}).then(function(){if(!lf)return;var fd=new FormData();fd.append("logo",lf);return api("inv_logo",undefined,fd)}).then(function(){toast("Reçu mis à jour.");closeSheet()}).catch(function(e){b.disabled=false;b.textContent="Enregistrer";toast(e.message)});break}
     case "ivlogodel":api("inv_logo_del",{}).then(function(){toast("Logo retiré.");invSheet()}).catch(function(e){toast(e.message)});break;
     case "bk":bkSheet();break;
     case "bksave":api("bk_set",{email:$("#bk_mail").value.trim()}).then(function(){toast($("#bk_mail").value.trim()?"Adresse enregistrée.":"Envoi désactivé.")}).catch(function(e){toast(e.message)});break;
