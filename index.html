@@ -154,6 +154,7 @@ a.btn.grow{display:block;text-align:center;flex:1}
 .setlist{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--surface)}
 .setrow{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;padding:14px;border:0;border-bottom:1px solid var(--line);background:none;color:var(--ink);font:inherit;text-align:left;text-decoration:none;cursor:pointer}
 .setrow:last-child{border-bottom:0}.setrow .pk_c{font-size:20px;line-height:1}
+#toTop{position:fixed;right:16px;bottom:calc(84px + env(safe-area-inset-bottom,0px));z-index:30;width:46px;height:46px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--ink);box-shadow:0 4px 14px rgba(0,0,0,.18);display:flex;align-items:center;justify-content:center;cursor:pointer}#toTop[hidden]{display:none}
 </style>
 </head>
 <body>
@@ -167,6 +168,7 @@ a.btn.grow{display:block;text-align:center;flex:1}
   <div id="banner"></div>
   <main id="main"><div class="empty">Chargement des données…</div></main>
 </div>
+<button id="toTop" type="button" aria-label="Revenir en haut" hidden><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg></button>
 <div id="layer"></div>
 <div id="toast" class="toast" hidden></div>
 
@@ -185,7 +187,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=47;
+var PAGE_V=48;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -776,6 +778,12 @@ api("status").then(function(st){
   if(appVersion&&String(PAGE_V)!==String(appVersion)&&location.search.indexOf("v="+appVersion)<0){location.replace(location.pathname+"?v="+appVersion);return}
   if(st.auth){authed=true;boot()}else renderAuth(st.setup);
 }).catch(function(){$("#main").innerHTML='<div class="empty">Le serveur ne répond pas. Vérifiez que le fichier api.php est bien envoyé et que PHP est actif.</div>'});
+})();
+
+(function(){var b=document.getElementById("toTop");if(!b)return;
+  function chk(){b.hidden=(window.pageYOffset||document.documentElement.scrollTop)<400}
+  window.addEventListener("scroll",chk,{passive:true});chk();
+  b.addEventListener("click",function(){window.scrollTo({top:0,behavior:"smooth"})});
 })();
 </script>
 </body>
