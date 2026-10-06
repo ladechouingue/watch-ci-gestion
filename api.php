@@ -124,13 +124,26 @@ if ($r === 'login') {
 }
 
 
-function bkData(PDO $pdo): string {
+function bkData(PDO $pdo, bool $photos = true): string {
     $l = function (string $t) use ($pdo): array {
         $rows = [];
         foreach ($pdo->query("SELECT id,data FROM $t") as $row) { $d = json_decode($row['data'], true); if (is_array($d)) { $d['id'] = $row['id']; $rows[] = $d; } }
         return $rows;
     };
-    return (string)json_encode(['date' => date('c'), 'products' => $l('products'), 'orders' => $l('orders'), 'expenses' => $l('expenses')], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    $prods = $l('products');
+    $ph = [];
+    if ($photos) {
+        foreach ($prods as $p) {
+            if (!empty($p['photo']) && preg_match('#^uploads/([a-f0-9]{24}\.jpg)$#', (string)$p['photo'], $m)) {
+                foreach ([$m[1], 't_' . $m[1]] as $f) {
+                    $path = __DIR__ . '/uploads/' . $f;
+                    if (!isset($ph[$f]) && is_file($path)) { $ph[$f] = base64_encode((string)file_get_contents($path)); }
+                }
+            }
+        }
+    }
+    $set = ['bk_email' => (string)(setting($pdo, 'bk_email') ?? '')];
+    return (string)json_encode(['date' => date('c'), 'version' => localVersion(), 'products' => $prods, 'orders' => $l('orders'), 'expenses' => $l('expenses'), 'settings' => $set, 'photos' => $ph], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 }
 function bkSend(PDO $pdo, string $to): bool {
     if (!filter_var($to, FILTER_VALIDATE_EMAIL)) { return false; }
@@ -138,13 +151,15 @@ function bkSend(PDO $pdo, string $to): bool {
     $host = preg_replace('/^gestion\./', '', $host);
     $from = 'gestion@' . preg_replace('/[^A-Za-z0-9.-]/', '', $host);
     $name = 'sauvegarde-watch-ci-' . date('Y-m-d') . '.json';
+    $data = bkData($pdo, true);
+    if (strlen($data) > 14000000) { $data = bkData($pdo, false); }
     $b = 'wci' . bin2hex(random_bytes(8));
     $subject = '=?UTF-8?B?' . base64_encode('Sauvegarde Watch Côte d\'Ivoire - ' . date('d/m/Y')) . '?=';
     $h = "From: Watch CI Gestion <$from>\r\nMIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=\"$b\"";
     $msg = "--$b\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n"
-        . chunk_split(base64_encode("Bonjour,\n\nVoici la sauvegarde du jour de votre outil de gestion (produits, commandes, dépenses).\nGardez ce mail : il vous permet de tout retrouver en cas de problème.\n")) . "\r\n"
+        . chunk_split(base64_encode("Bonjour,\n\nVoici la sauvegarde du jour de votre outil de gestion (produits avec photos, commandes, dépenses).\nGardez ce mail : il vous permet de tout retrouver en cas de problème.\n")) . "\r\n"
         . "--$b\r\nContent-Type: application/json; name=\"$name\"\r\nContent-Transfer-Encoding: base64\r\nContent-Disposition: attachment; filename=\"$name\"\r\n\r\n"
-        . chunk_split(base64_encode(bkData($pdo))) . "\r\n--$b--";
+        . chunk_split(base64_encode($data)) . "\r\n--$b--";
     $ok = @mail($to, $subject, $msg, $h, '-f' . $from);
     if (!$ok) { $ok = @mail($to, $subject, $msg, $h); }
     if ($ok) { setSetting($pdo, 'bk_last', date('Y-m-d H:i')); }
@@ -200,7 +215,7 @@ switch ($r) {
 
     case 'export':
         header('Content-Disposition: attachment; filename="sauvegarde-watch-ci-' . date('Y-m-d') . '.json"');
-        out(['date' => date('c'), 'products' => load($pdo, 'products'), 'orders' => load($pdo, 'orders'), 'expenses' => load($pdo, 'expenses')]);
+        header('Content-Type: application/json; charset=utf-8'); echo bkData($pdo, true); exit;
 
     case 'save': {
         if (!$isPost) { fail('POST requis.', 405); }
@@ -418,6 +433,39 @@ switch ($r) {
         $pdo->prepare('DELETE FROM settings WHERE k IN (?,?)')->execute(['catlabel:' . $f, 'catord:' . $f]);
         setSetting($pdo, 'cat_seeded', '1');
         out(['ok' => true]);
+    }
+
+    case 'restore': {
+        if (!$isPost) { fail('POST requis.', 405); }
+        if (empty($_FILES['file']) || (int)$_FILES['file']['error'] !== UPLOAD_ERR_OK) { fail('Fichier non reçu (trop gros pour l\'hébergement ?).'); }
+        $j = json_decode((string)file_get_contents($_FILES['file']['tmp_name']), true);
+        if (!is_array($j) || !isset($j['products'], $j['orders'], $j['expenses']) || !is_array($j['products']) || !is_array($j['orders']) || !is_array($j['expenses'])) { fail('Ce fichier n\'est pas une sauvegarde valide.'); }
+        @file_put_contents($dataDir . '/avant-restauration.json', bkData($pdo, false));
+        $pdo->beginTransaction();
+        try {
+            foreach (['products', 'orders', 'expenses'] as $t) {
+                $pdo->exec("DELETE FROM $t");
+                $ins = $pdo->prepare("INSERT INTO $t(id,data,updated) VALUES(?,?,?)");
+                foreach ($j[$t] as $d) {
+                    if (!is_array($d) || !okId($d['id'] ?? null)) { continue; }
+                    $id = $d['id']; unset($d['id']);
+                    $ins->execute([$id, json_encode($d, JSON_UNESCAPED_UNICODE), time()]);
+                }
+            }
+            $pdo->commit();
+        } catch (Throwable $e) { $pdo->rollBack(); fail('Restauration impossible : ' . $e->getMessage(), 500); }
+        $np = 0;
+        if (isset($j['photos']) && is_array($j['photos'])) {
+            foreach ($j['photos'] as $f => $b64) {
+                if (!is_string($f) || !is_string($b64) || !preg_match('/^(t_)?[a-f0-9]{24}\.jpg$/', $f)) { continue; }
+                $bin = base64_decode($b64, true);
+                if ($bin === false || substr($bin, 0, 2) !== "\xFF\xD8") { continue; }
+                file_put_contents($upDir . '/' . $f, $bin); $np++;
+            }
+        }
+        $em = $j['settings']['bk_email'] ?? '';
+        if (is_string($em) && $em !== '' && filter_var($em, FILTER_VALIDATE_EMAIL) && (string)setting($pdo, 'bk_email') === '') { setSetting($pdo, 'bk_email', $em); }
+        out(['ok' => true, 'products' => count($j['products']), 'orders' => count($j['orders']), 'expenses' => count($j['expenses']), 'photos' => $np]);
     }
 
     case 'bk_get':

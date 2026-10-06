@@ -177,7 +177,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=33;
+var PAGE_V=34;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -288,7 +288,7 @@ function viewHome(){
   var chK=Object.keys(ch).sort(function(a,b){return ch[b].r-ch[a].r||ch[b].n-ch[a].n}),chTot=chK.reduce(function(s,k){return s+ch[k].r},0)||1;
   var orig='<div class="card"><div class="row" style="justify-content:space-between;margin-bottom:6px"><h2>Ventes par canal</h2><span class="s" style="color:var(--muted);font-size:13px">'+esc(periodLabel(month))+'</span></div><div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Canal</th><th>Cmd</th><th>Ventes</th><th>Part</th></tr></thead><tbody>'+chK.map(function(k){var e=ch[k],pc=Math.round(e.r/chTot*100);return '<tr'+(e.n?'':' class="zero"')+'><td><b>'+esc(k)+'</b><div class="s" style="font-size:12px;color:var(--muted)">'+(e.n?'Panier '+F(e.r/e.n):'Aucune vente')+(e.x?' · Dépenses '+F(e.x)+' · Net '+F(e.p-e.x):'')+'</div><div class="bar"><i style="width:'+pc+'%"></i></div></td><td>'+e.n+'</td><td>'+F(e.r)+'</td><td>'+pc+' %</td></tr>'}).join("")+'</tbody></table></div></div>';
   var sv='<div class="card kpi"><span>Valeur du stock (au prix de vente)</span><b>'+F(stockValue)+'</b></div>';
-  return '<div style="display:flex;flex-direction:column;gap:18px">'+tiles+chart+'<div class="cols">'+todo+lowC+'</div><div class="cols">'+best+sv+'</div>'+orig+'<div class="foot"><a href="api.php?r=export">Télécharger une sauvegarde</a><button class="linkbtn" data-act="bk" type="button">Sauvegarde par e-mail</button><span>Version '+esc(appVersion||"?")+'</span><button class="linkbtn" data-act="chkupd">Vérifier les mises à jour</button><button class="linkbtn" data-act="rollback" data-confirm="Revenir à la version précédente ?">Version précédente</button></div></div>';
+  return '<div style="display:flex;flex-direction:column;gap:18px">'+tiles+chart+'<div class="cols">'+todo+lowC+'</div><div class="cols">'+best+sv+'</div>'+orig+'<div class="foot"><a href="api.php?r=export">Télécharger une sauvegarde</a><button class="linkbtn" data-act="bk" type="button">Sauvegarde</button><span>Version '+esc(appVersion||"?")+'</span><button class="linkbtn" data-act="chkupd">Vérifier les mises à jour</button><button class="linkbtn" data-act="rollback" data-confirm="Revenir à la version précédente ?">Version précédente</button></div></div>';
 }
 function stockPill(p){var s=p.stock||0;return s<=0?'<span class="pill bad">Rupture</span>':s<=(p.alert==null?3:p.alert)?'<span class="pill warn">'+s+' en stock</span>':'<span class="pill good">'+s+' en stock</span>'}
 function orderRow(o){
@@ -411,11 +411,12 @@ function catSheet(msg){
 function bkSheet(){
   openSheet('<h2>Sauvegarde par e-mail</h2><div class="empty">Chargement…</div>');
   api("bk_get").then(function(j){
-    openSheet('<h2>Sauvegarde par e-mail</h2><p class="s" style="color:var(--muted)">Chaque jour, vous recevez un e-mail avec toutes vos données (produits, commandes, dépenses).</p>'+
+    openSheet('<h2>Sauvegarde</h2><p class="s" style="color:var(--muted)">Chaque jour, vous recevez un e-mail avec toutes vos données : produits (avec photos), commandes et dépenses.</p>'+
       '<label class="f">Votre adresse e-mail<input id="bk_mail" type="email" inputmode="email" autocomplete="email" placeholder="exemple@gmail.com" value="'+esc(j.email)+'"></label>'+
       '<div class="s" style="color:var(--muted)">'+(j.last?'Dernier envoi : '+esc(j.last):'Aucun envoi pour le moment.')+'</div>'+
       '<div class="row"><button class="btn primary grow" data-act="bksave" type="button">Enregistrer</button><button class="btn grow" data-act="bktest" type="button">Envoyer un test</button></div>'+
       '<details class="card"><summary><b>Pour un envoi garanti chaque nuit</b></summary><p class="s" style="color:var(--muted)">Sans réglage, l\'envoi se fait à la première ouverture de l\'outil chaque jour. Pour qu\'il parte même sans ouvrir l\'outil : cPanel &gt; Tâches Cron &gt; « Une fois par jour » &gt; collez cette commande.</p><textarea readonly rows="4" id="bk_cron" style="font-size:12px">'+esc(j.cron)+'</textarea><button class="btn small" data-act="bkcopy" type="button">Copier la commande</button></details>'+
+      '<div class="card" style="display:flex;flex-direction:column;gap:8px"><h3>Restaurer une sauvegarde</h3><p class="s" style="color:var(--muted)">Nouvel hébergement ? Installez l\'outil, créez votre mot de passe, puis choisissez ici le fichier reçu par e-mail. Cela remplace toutes les données actuelles.</p><input id="bk_file" type="file" accept=".json,application/json"><button class="btn danger" data-act="bkrestore" data-confirm="Remplacer toutes les données actuelles ?" type="button">Restaurer</button></div>'+
       '<div class="row"><button class="btn grow" data-act="close" type="button">Fermer</button></div>');
   }).catch(function(e){openSheet('<h2>Sauvegarde par e-mail</h2><div class="empty">'+esc(e.message)+'</div><div class="row"><button class="btn grow" data-act="close">Fermer</button></div>')});
 }
@@ -627,6 +628,8 @@ document.addEventListener("click",function(e){
     case "saveorder":saveOrder(id||null);break;
     case "setstatus":setStatus(id,b.dataset.v);break;
     case "setpaid":setPaid(id);break;
+    case "bkrestore":{var f=$("#bk_file").files&&$("#bk_file").files[0];if(!f){toast("Choisissez le fichier de sauvegarde.");break}var fd=new FormData();fd.append("file",f);b.disabled=true;b.textContent="Restauration…";
+      api("restore",undefined,fd).then(function(r){return refresh().then(function(){closeSheet();toast("Restauré : "+r.products+" produits, "+r.orders+" commandes, "+r.expenses+" dépenses, "+r.photos+" photos.")})}).catch(function(e){b.disabled=false;b.textContent="Restaurer";toast(e.message)});break}
     case "bk":bkSheet();break;
     case "bksave":api("bk_set",{email:$("#bk_mail").value.trim()}).then(function(){toast($("#bk_mail").value.trim()?"Adresse enregistrée.":"Envoi désactivé.")}).catch(function(e){toast(e.message)});break;
     case "bktest":b.disabled=true;b.textContent="Envoi…";api("bk_set",{email:$("#bk_mail").value.trim()}).then(function(){return api("bk_test",{})}).then(function(){toast("E-mail envoyé. Vérifiez votre boîte (et les courriers indésirables).");bkSheet()}).catch(function(e){b.disabled=false;b.textContent="Envoyer un test";toast(e.message)});break;
