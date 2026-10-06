@@ -147,6 +147,8 @@ a{color:var(--accent)}
 .pkitem{display:flex;align-items:center;gap:10px;width:100%;padding:8px 4px;border:0;border-bottom:1px solid var(--line);background:none;color:var(--ink);font:inherit;text-align:left;cursor:pointer}
 .pkitem .t,.pkitem .s{display:block}.pkitem .s{color:var(--muted);font-size:13px}
 .itemrow>.f:first-child{grid-column:1/-1}.itemrow,.itemrow:not(x){grid-template-columns:90px 1fr 44px!important}
+input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=hidden]),select{min-height:44px}
+select{-webkit-appearance:none;appearance:none;padding-right:34px;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 18px) 52%,calc(100% - 13px) 52%;background-size:5px 5px,5px 5px;background-repeat:no-repeat;text-overflow:ellipsis}
 </style>
 </head>
 <body>
@@ -177,7 +179,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=35;
+var PAGE_V=36;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
