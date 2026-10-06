@@ -176,7 +176,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=30;
+var PAGE_V=31;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -297,9 +297,12 @@ function orderRow(o){
 function viewOrders(){
   var f=[["all","Toutes"],["a_livrer","À livrer"],["unpaid","Non payées"],["livre","Livrées"],["annule","Annulées"]];
   var list=orders.filter(function(o){return ofilter==="all"||(ofilter==="unpaid"?(!o.paid&&active(o)):o.status===ofilter)}).sort(function(a,b){return (b.date||"")>(a.date||"")?1:(b.date===a.date?(b.id>a.id?1:-1):-1)});
+  var ws=q.toLowerCase().split(/\s+/).filter(Boolean);
+  if(ws.length)list=list.filter(function(o){var h=((o.customer||"")+" "+(o.phone||"")+" "+(o.channel||"")+" "+(o.note||"")+" "+dateLabel(o.date)+" "+(o.items||[]).map(function(i){return i.label}).join(" ")).toLowerCase();return ws.every(function(w){return h.indexOf(w)>=0})});
   return '<div style="display:flex;flex-direction:column;gap:14px"><div class="row"><h2 class="grow">Commandes</h2><button class="btn primary" data-act="neworder">+ Nouvelle commande</button></div>'+
    '<div class="seg">'+f.map(function(x){return '<button data-act="ofilter" data-v="'+x[0]+'" aria-pressed="'+(ofilter===x[0])+'">'+x[1]+'</button>'}).join("")+'</div>'+
-   '<div class="card"><div class="list">'+(list.length?list.map(orderRow).join(""):'<div class="empty">Aucune commande ici. Utilisez « Nouvelle commande » pour en saisir une.</div>')+'</div></div></div>';
+   '<input id="search" type="search" placeholder="Chercher un client, un numéro, un article" value="'+esc(q)+'">'+
+   (list.length?list.map(function(o){return '<div class="card ordcard"><div class="list">'+orderRow(o)+'</div></div>'}).join(""):'<div class="card"><div class="empty">'+(ws.length?'Aucune commande trouvée.':'Aucune commande ici. Utilisez « Nouvelle commande » pour en saisir une.')+'</div></div>')+'</div>';
 }
 var BR=["38/40/41/42","42/44/45/46/49"], CO=["40","41","42","44","45","46","49"];
 function presets(cat){return cat==="Coque"||cat==="Antichoc"?CO:cat==="Bracelet"?BR:[]}
