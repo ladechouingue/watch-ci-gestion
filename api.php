@@ -307,8 +307,15 @@ function buildInvoice(array $o, string $num, array $biz = []): string {
         $R(330, $y, 217, 34, '0.87 0.39 0.06');
         $T(342, $y + 22, 'TOTAL', 11, true, 'l', '1 1 1'); $T(537, $y + 22, money($total), 14, true, 'r', '1 1 1');
         $y += 34;
-        if (!empty($o['note'])) { $T(48, $y - 12, 'Note : ' . pdfFit((string)$o['note'], false, 9, 270), 9, false, 'l', '0.45 0.5 0.47'); }
-        $y += 34;
+        if (!empty($o['note'])) {
+            $y += 22; $line = ''; $words = preg_split('/\s+/u', 'Note : ' . trim((string)$o['note'])) ?: [];
+            foreach ($words as $w) {
+                if ($line !== '' && pdfW($line . ' ' . $w, false, 9) > 499) { $T(48, $y, $line, 9, false, 'l', '0.45 0.5 0.47'); $y += 13; $line = $w; }
+                else { $line = $line === '' ? $w : $line . ' ' . $w; }
+            }
+            if ($line !== '') { $T(48, $y, $line, 9, false, 'l', '0.45 0.5 0.47'); $y += 13; }
+            $y += 4;
+        } else { $y += 34; }
         $T(297, $y, 'Merci pour votre confiance !', 11, true, 'c', '0.87 0.39 0.06');
         return [$c, $y];
     };
