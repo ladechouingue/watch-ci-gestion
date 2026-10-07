@@ -187,7 +187,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=49;
+var PAGE_V=50;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -212,7 +212,9 @@ function patch(coll,id,obj){var list=coll==="orders"?orders:products;var cur=lis
 function del(coll,id){return api("delete",{coll:coll,id:id}).then(refresh)}
 
 /* ---------- calculs ---------- */
-function calc(o){var rev=0,cost=0,qty=0;(o.items||[]).forEach(function(i){rev+=i.qty*i.price;cost+=i.qty*(i.cost||0);qty+=i.qty});return {rev:rev,cost:cost,qty:qty,profit:rev-cost-(o.fee||0)}}
+var MM_RATE=0.01;
+function mmFee(o){if(!o||!o.paid||!o.mm||o.status==="annule")return 0;var r=0;(o.items||[]).forEach(function(i){r+=i.qty*i.price});return Math.round(r*MM_RATE)}
+function calc(o){var rev=0,cost=0,qty=0;(o.items||[]).forEach(function(i){rev+=i.qty*i.price;cost+=i.qty*(i.cost||0);qty+=i.qty});var mm=mmFee(o);return {rev:rev,cost:cost,qty:qty,mm:mm,profit:rev-cost-(o.fee||0)-mm}}
 function isOpex(e){return e.category!==MARCH}
 function inRange(d){return month==="all"||(d||"").indexOf(month)===0}
 var periodLabel=function(m){return m==="all"?"Toutes les années":m.length===4?"Année "+m:monthLabel(m)};
@@ -257,10 +259,10 @@ function viewHome(){
   var base=month==="all"?today().slice(0,7):month.length===4?(month===today().slice(0,4)?today().slice(0,7):month+"-12"):month;
   var rev=0,profit=0,due=0,units=0;
   var exM=expenses.filter(function(e){return inRange(e.date)}),expTot=exM.filter(isOpex).reduce(function(s,e){return s+(e.amount||0)},0),expMarch=exM.filter(function(e){return !isOpex(e)}).reduce(function(s,e){return s+(e.amount||0)},0);
-  var cashIn=0,fees=0;inM.forEach(function(o){if(o.paid)cashIn+=calc(o).rev;fees+=o.fee||0});var cash=cashIn-fees-expTot-expMarch;
+  var cashIn=0,fees=0;inM.forEach(function(o){if(o.paid)cashIn+=calc(o).rev;fees+=(o.fee||0)+mmFee(o)});var cash=cashIn-fees-expTot-expMarch;
   inM.forEach(function(o){var c=calc(o);rev+=c.rev;profit+=c.profit;units+=c.qty;if(!o.paid)due+=c.rev});
   var stockValue=products.reduce(function(s,p){return s+Math.max(0,p.stock||0)*(p.price||0)},0);
-  var feeTot=0;inM.forEach(function(o){feeTot+=o.fee||0});var net=rev-feeTot-expTot-expMarch;
+  var feeTot=0;inM.forEach(function(o){feeTot+=(o.fee||0)+mmFee(o)});var net=rev-feeTot-expTot-expMarch;
   var tiles='<div class="grid3">'+
    '<div class="card kpi"><span>Ventes</span><b>'+F(rev)+'</b><small>'+inM.length+' commande'+(inM.length>1?'s':'')+'</small></div>'+
    '<div class="card kpi"><span>Achats de marchandises</span><b>'+F(expMarch)+'</b><small>Payé aux fournisseurs</small></div>'+
@@ -541,6 +543,7 @@ function newOrderSheet(oid){
    '<label class="row" style="gap:8px"><input id="o_mine" type="checkbox" style="width:auto"'+(eo&&eo.fee?' checked':'')+'> À ma charge <span class="s" style="color:var(--muted);font-size:13px">(décoché = payé par le client)</span></label>'+
    '<label class="f">Note<input id="o_note" type="text" value="'+(eo?esc(eo.note||""):"")+'"></label>'+
    '<label class="row" style="gap:8px"><input id="o_paid" type="checkbox" style="width:auto"'+(eo&&eo.paid?' checked':'')+'> Commande déjà payée</label>'+
+   '<label class="row" id="o_mmw" style="gap:8px"'+(eo&&eo.paid?'':' hidden')+'><input id="o_mm" type="checkbox" style="width:auto"'+(!eo||eo.mm||eo.mm===undefined&&!eo.paid?' checked':'')+'> Payée par mobile money <span class="s" style="color:var(--muted);font-size:13px">(frais de 1 % : <b id="o_mmv">0 F</b>)</span></label>'+
    '<div class="card"><div class="sum"><span>Total</span><b class="num" id="o_total">0 F</b></div></div>'+
    '<div class="row"><button class="btn grow" data-act="close" type="button">Annuler</button><button class="btn primary grow" data-act="saveorder" data-id="'+(eo?esc(eo.id):"")+'" type="button">Enregistrer</button></div>');
   if(eo)updateTotals();
@@ -553,7 +556,7 @@ function readRows(){
 }
 function updateTotals(){
   var rows=readRows(),t=0,c=0;rows.forEach(function(r){if(r.p&&r.qty){var pr=isNaN(r.price)?r.p.price:r.price;t+=r.qty*pr;c+=r.qty*(r.p.cost||0)}});
-    var a=$("#o_total"),b=$("#o_profit");if(a)a.textContent=F(t);var m=$("#o_mine"),fee=m&&m.checked?(parseFloat(($("#o_fee")||{}).value)||0):0;if(b)b.textContent=F(t-c-fee);
+    var a=$("#o_total"),b=$("#o_profit");if(a)a.textContent=F(t);var mv=$("#o_mmv");if(mv)mv.textContent=F(Math.round(t*MM_RATE));var m=$("#o_mine"),fee=m&&m.checked?(parseFloat(($("#o_fee")||{}).value)||0):0;if(b)b.textContent=F(t-c-fee);
 }
 var saveOrder=guard(function(oid){
   var eo=oid&&orders.find(function(x){return x.id===oid});
@@ -562,7 +565,7 @@ var saveOrder=guard(function(oid){
   var name=$("#o_name").value.trim();if(!name){toast("Indiquez le nom du client.");return}
   if($("#o_fee").value.trim()===""){toast("Indiquez le coût de la livraison (0 s'il n'y en a pas).");return}
   var items=rows.map(function(r){return {pid:r.pid,label:label(r.p),qty:r.qty,price:isNaN(r.price)?r.p.price:r.price,cost:r.p.cost||0}});
-  var o={date:$("#o_date").value||today(),customer:name,phone:$("#o_phone").value.trim(),place:$("#o_place").value.trim(),channel:$("#o_channel").value,items:items,dcost:parseFloat($("#o_fee").value)||0,fee:$("#o_mine").checked?(parseFloat($("#o_fee").value)||0):0,paid:$("#o_paid").checked,note:$("#o_note").value.trim(),status:eo?eo.status:"a_livrer",createdAt:eo?(eo.createdAt||new Date().toISOString()):new Date().toISOString()};
+  var o={date:$("#o_date").value||today(),customer:name,phone:$("#o_phone").value.trim(),place:$("#o_place").value.trim(),channel:$("#o_channel").value,items:items,dcost:parseFloat($("#o_fee").value)||0,fee:$("#o_mine").checked?(parseFloat($("#o_fee").value)||0):0,paid:$("#o_paid").checked,mm:$("#o_paid").checked&&$("#o_mm").checked,note:$("#o_note").value.trim(),status:eo?eo.status:"a_livrer",createdAt:eo?(eo.createdAt||new Date().toISOString()):new Date().toISOString()};
   if(eo&&eo.inv)o.inv=eo.inv;
   if(eo){
     var d={};(eo.items||[]).forEach(function(i){d[i.pid]=(d[i.pid]||0)+i.qty});items.forEach(function(i){d[i.pid]=(d[i.pid]||0)-i.qty});
@@ -587,7 +590,7 @@ function orderSheet(id){
    '<div class="card"><div class="list">'+(o.items||[]).map(function(i){return '<div class="item">'+thumb(pById(i.pid),"sm")+'<div class="grow"><div class="t">'+esc(i.label)+'</div><div class="s">'+i.qty+' × '+F(i.price)+'</div></div><div class="num">'+F(i.qty*i.price)+'</div></div>'}).join("")+'</div>'+
    '<div class="sum" style="margin-top:8px"><span>Total</span><b class="num">'+F(c.rev)+'</b></div>'+
    (o.fee?'<div class="sum"><span>Livraison à ma charge</span><span class="num">− '+F(o.fee)+'</span></div>':'<div class="sum"><span>Livraison payée par le client</span><span class="num">'+F(o.dcost||0)+'</span></div>')+
-   '<div class="sum"><span>Paiement</span><span class="pill '+(o.paid?'good':'bad')+'">'+(o.paid?'Payé':'Non payé')+'</span></div></div>'+
+   (c.mm?'<div class="sum"><span>Frais mobile money (1 %)</span><span class="num">− '+F(c.mm)+'</span></div>':'')+'<div class="sum"><span>Paiement</span><span class="pill '+(o.paid?'good':'bad')+'">'+(o.paid?'Payé':'Non payé')+'</span></div></div>'+
    (o.note?'<div class="card">'+esc(o.note)+'</div>':'')+
    '<div class="row">'+
    (o.status==="a_livrer"?'<button class="btn primary grow" data-act="setstatus" data-id="'+id+'" data-v="livre">Marquer livrée</button>':o.status==="livre"?'<button class="btn grow" data-act="setstatus" data-id="'+id+'" data-v="a_livrer">Remettre à livrer</button>':'')+
@@ -599,7 +602,7 @@ function orderSheet(id){
    (o.status!=="annule"?'</div><div class="row"><button class="btn grow" data-act="close">Fermer</button></div>':'<button class="btn grow" data-act="close">Fermer</button></div>'));
 }
 var setStatus=guard(function(id,v){return patch("orders",id,{status:v}).then(function(){closeSheet()})});
-var setPaid=guard(function(id,v){return patch("orders",id,{paid:v!=="0"}).then(function(){closeSheet()})});
+var setPaid=guard(function(id,v){return patch("orders",id,v==="0"?{paid:false,mm:false}:{paid:true,mm:true}).then(function(){closeSheet()})});
 var cancelOrder=guard(function(id){var o=orders.find(function(x){return x.id===id});if(!o)return;return patch("orders",id,{status:"annule"}).then(function(){return adjustStock(o.items||[],1)}).then(function(){closeSheet();toast("Commande annulée, stock remis.")})});
 var delOrder=guard(function(id){return del("orders",id).then(function(){closeSheet()})});
 
@@ -740,6 +743,7 @@ document.addEventListener("input",function(e){
   if(e.target.closest&&e.target.closest("#rows")||e.target.id==="o_fee"||e.target.id==="o_mine")updateTotals();
 });
 document.addEventListener("change",function(e){
+  if(e.target.id==="o_paid"){$("#o_mmw").hidden=!e.target.checked;return}
   if(e.target.id==="x_cat"){var cv=e.target.value,m=cv===MARCH,hh=cv==="Hébergement web",dd=cv==="Nom de domaine";$("#x_march").hidden=!m;$("#x_per").hidden=!hh;$("#x_domhint").hidden=!dd;$("#x_chan").hidden=m||cv===META||hh||dd;return}
   if(e.target.id==="p_cat"){var cur=readSizes();$("#sizes").innerHTML=sizeRows(e.target.value,cur);return}
   if(e.target.id==="p_file"){var f=e.target.files&&e.target.files[0];if(f)uploadPhoto(f);e.target.value="";return}
