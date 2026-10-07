@@ -187,13 +187,13 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=48;
+var PAGE_V=49;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
 var MARCH="Achat de marchandises";
 var MARCH_TYPES=["Bracelet","Coque","Antichoc","Câble","Chargeur","Verre protecteur","Autre"];
-var EXP_CATS=[MARCH,META,"Emballage","Transport et déplacements","Abonnements et outils","Photos et contenu","Hébergement web","Autre"];
+var EXP_CATS=[MARCH,META,"Emballage","Transport et déplacements","Abonnements et outils","Photos et contenu","Hébergement web","Nom de domaine","Autre"];
 var STATUS={a_livrer:["À livrer","warn"],livre:["Livré","good"],annule:["Annulé","off"]};
 
 /* ---------- accès au serveur ---------- */
@@ -348,18 +348,20 @@ function viewExpenses(){
   cats='<div class="cols" style="align-items:start">'+types+cats+'</div>';
   return '<div style="display:flex;flex-direction:column;gap:14px"><div class="row"><h2 class="grow">Dépenses</h2><button class="btn primary" data-act="newexp">+ Nouvelle dépense</button></div>'+
    '<div class="grid2"><div class="card kpi"><span>Total sorti</span><b>'+F(tot)+'</b><small>'+esc(periodLabel(month))+'</small></div><div class="card kpi"><span>Dont marchandises</span><b>'+F(march)+'</b><small>'+Math.round(march/(tot||1)*100)+' % des sorties</small></div></div>'+cats+
-   '<div class="card"><div class="list">'+(list.length?list.map(function(e){return '<button class="item clickable" data-act="editexp" data-id="'+e.id+'"><div class="grow"><div class="t">'+(isOpex(e)?esc(e.category||"Autre"):'Marchandises · '+esc(e.item||"Non précisé")+(e.qty?' · '+e.qty+' pièces':''))+(e.note?' · '+esc(e.note):'')+'</div><div class="s">'+esc(dateLabel(e.date))+(isOpex(e)?(e.channel?' · '+esc(e.channel):''):(e.supplier?' · '+esc(e.supplier):''))+'</div></div><div class="num">'+F(e.amount)+'</div></button>'}).join(""):'<div class="empty">Aucune dépense sur cette période. Ajoutez la publicité, les emballages, les outils…</div>')+'</div></div>'+
+   '<div class="card"><div class="list">'+(list.length?list.map(function(e){return '<button class="item clickable" data-act="editexp" data-id="'+e.id+'"><div class="grow"><div class="t">'+(isOpex(e)?esc(e.category||"Autre"):'Marchandises · '+esc(e.item||"Non précisé")+(e.qty?' · '+e.qty+' pièces':''))+(e.note?' · '+esc(e.note):'')+'</div><div class="s">'+esc(dateLabel(e.date))+(isOpex(e)?(e.channel?' · '+esc(e.channel):'')+(e.period?' · '+esc(e.period):''):(e.supplier?' · '+esc(e.supplier):''))+'</div></div><div class="num">'+F(e.amount)+'</div></button>'}).join(""):'<div class="empty">Aucune dépense sur cette période. Ajoutez la publicité, les emballages, les outils…</div>')+'</div></div>'+
    '<p style="margin:0;color:var(--muted);font-size:13px">Les achats de marchandises comptent dans l\'argent sorti (Reste en caisse), mais pas dans le bénéfice : le bénéfice déduit déjà le prix d\'achat des articles vendus. Les frais de livraison saisis dans les commandes sont aussi déjà comptés.</p></div>';
 }
 function expenseSheet(id){
   var e=id?expenses.find(function(x){return x.id===id}):null;e=e||{date:today(),category:MARCH,amount:"",channel:"",note:"",item:"",qty:"",supplier:""};
   var cats=EXP_CATS.slice();if(e.category&&cats.indexOf(e.category)<0)cats.push(e.category);
-  var isM=e.category===MARCH,noCh=isM||e.category===META;
+  var isM=e.category===MARCH,isH=e.category==="Hébergement web",isD=e.category==="Nom de domaine",noCh=isM||e.category===META||isH||isD;
   var types=MARCH_TYPES.slice();if(e.item&&types.indexOf(e.item)<0)types.push(e.item);
   openSheet('<h2>'+(id?'Modifier la dépense':'Nouvelle dépense')+'</h2>'+
    '<label class="f">Catégorie<select id="x_cat">'+cats.map(function(c){return '<option'+(c===e.category?' selected':'')+'>'+esc(c)+'</option>'}).join("")+'</select></label><label class="f">Date<input id="x_date" type="date" value="'+esc(e.date)+'"></label>'+
    '<div id="x_march" class="card" style="display:flex;flex-direction:column;gap:10px"'+(isM?'':' hidden')+'><label class="f">Quel type de marchandise ?<select id="x_item"><option value="">Choisir…</option>'+types.map(function(c){return '<option'+(c===e.item?' selected':'')+'>'+esc(c)+'</option>'}).join("")+'</select></label>'+
    '<div class="grid2"><label class="f">Nombre de pièces<input id="x_qty" type="number" min="0" inputmode="numeric" value="'+esc(e.qty)+'" placeholder="Ex. 50"></label><label class="f">Fournisseur<input id="x_supplier" type="text" value="'+esc(e.supplier||"")+'" placeholder="Ex. AliExpress, Chine"></label></div><div class="s" id="x_unit" style="color:var(--muted);font-size:13px"></div></div>'+
+   '<label class="f" id="x_per"'+(isH?'':' hidden')+'>Paiement<select id="x_period">'+["Mensuel","Annuel"].map(function(c){return '<option'+(c===(e.period||"Mensuel")?' selected':'')+'>'+c+'</option>'}).join("")+'</select></label>'+
+   '<div class="s" id="x_domhint" style="color:var(--muted)"'+(isD?'':' hidden')+'>Le nom de domaine se renouvelle une fois par an.</div>'+
    '<label class="f">Montant payé (F)<input id="x_amount" type="number" min="0" inputmode="numeric" value="'+esc(e.amount)+'"></label>'+
    '<label class="f" id="x_chan"'+(noCh?' hidden':'')+'>Canal concerné<select id="x_channel"><option value="">Aucun</option>'+CHANNELS.map(function(c){return '<option'+(c===e.channel?' selected':'')+'>'+esc(c)+'</option>'}).join("")+'</select></label>'+
    '<label class="f">Note<input id="x_note" type="text" value="'+esc(e.note||"")+'" placeholder="Ex. commande n°12, pub Facebook, sachets"></label>'+
@@ -371,6 +373,8 @@ var saveExpense=guard(function(id){
   var amount=parseFloat($("#x_amount").value);if(!(amount>0)){toast("Indiquez un montant.");return}
   var cat=$("#x_cat").value,d={date:$("#x_date").value||today(),category:cat,amount:amount,channel:"",note:$("#x_note").value.trim()};
   if(cat===MARCH){var it=$("#x_item").value;if(!it){toast("Choisissez le type de marchandise.");return}d.item=it;d.qty=parseInt($("#x_qty").value,10)||0;d.supplier=$("#x_supplier").value.trim()}
+  else if(cat==="Hébergement web")d.period=$("#x_period").value;
+  else if(cat==="Nom de domaine")d.period="Annuel";
   else if(cat!==META)d.channel=$("#x_channel").value;
   return put("expenses",id||uid("x"),d).then(function(){closeSheet();toast("Dépense enregistrée.")});
 });
@@ -736,7 +740,7 @@ document.addEventListener("input",function(e){
   if(e.target.closest&&e.target.closest("#rows")||e.target.id==="o_fee"||e.target.id==="o_mine")updateTotals();
 });
 document.addEventListener("change",function(e){
-  if(e.target.id==="x_cat"){var m=e.target.value===MARCH;$("#x_march").hidden=!m;$("#x_chan").hidden=m||e.target.value===META;return}
+  if(e.target.id==="x_cat"){var cv=e.target.value,m=cv===MARCH,hh=cv==="Hébergement web",dd=cv==="Nom de domaine";$("#x_march").hidden=!m;$("#x_per").hidden=!hh;$("#x_domhint").hidden=!dd;$("#x_chan").hidden=m||cv===META||hh||dd;return}
   if(e.target.id==="p_cat"){var cur=readSizes();$("#sizes").innerHTML=sizeRows(e.target.value,cur);return}
   if(e.target.id==="p_file"){var f=e.target.files&&e.target.files[0];if(f)uploadPhoto(f);e.target.value="";return}
   if(e.target.id==="yearSel"){var yv=e.target.value,cm=month.length===7?month.slice(5):"";month=yv==="all"?"all":yv+(cm?"-"+cm:"");render();return}
