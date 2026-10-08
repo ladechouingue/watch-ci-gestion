@@ -130,8 +130,8 @@ a{color:var(--accent)}
 .foot{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;font-size:13px;color:var(--muted)}
 .stockgrid{display:grid;grid-template-columns:1fr;gap:14px;align-items:start}
 @media(min-width:1000px){
-  .wrap{max-width:1180px}
-  .stockgrid{grid-template-columns:repeat(3,1fr)}
+  .wrap{max-width:1380px}
+  .stockgrid{grid-template-columns:repeat(4,1fr)}
   .kpi b{font-size:26px}
   h1{font-size:26px}
 }
@@ -187,7 +187,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=52;
+var PAGE_V=53;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -332,8 +332,8 @@ function viewStock(){
   var gs=groups().sort(function(a,b){return b.t-a.t}).filter(function(g){return !ql||(g.base.name+" "+(g.base.color||"")+" "+(g.base.category||"")+" "+g.items.map(function(p){return p.size}).join(" ")).toLowerCase().indexOf(ql)>=0});
   var cards=gs.map(function(g){
     var b=g.base,flag=g.items.some(function(p){return (p.stock||0)<=(p.alert==null?3:p.alert)});
-    return '<div class="card"><div class="item" style="padding-top:0"><button class="clickable" style="width:auto" data-act="editp" data-g="'+g.g+'" aria-label="Modifier">'+thumb(b)+'</button><button class="grow clickable" data-act="editp" data-g="'+g.g+'"><div class="t">'+esc(b.name)+'</div><div class="s">'+esc([b.category,b.color].filter(Boolean).join(" · "))+'</div><div class="s">Prix de vente '+F(b.price)+'</div></button><span class="pill '+(flag?'warn':'good')+'">'+g.total+' au total</span><button class="btn small" data-act="dupp" data-g="'+g.g+'" aria-label="Dupliquer">Dupliquer</button></div>'+
-      g.items.map(function(p){return '<div class="vrow"><span class="t">'+(p.size?esc(p.size)+' MM':'Taille unique')+'</span><span style="display:flex;gap:10px;align-items:center">'+((p.stock||0)<=0?'<span class="pill bad">Rupture</span>':(p.stock||0)<=(p.alert==null?3:p.alert)?'<span class="pill warn">Faible</span>':'')+'<span class="stepper"><button data-act="adj" data-id="'+p.id+'" data-d="-1" aria-label="Retirer un">−</button><span class="num">'+(p.stock||0)+'</span><button data-act="adj" data-id="'+p.id+'" data-d="1" aria-label="Ajouter un">+</button></span></span></div>'}).join("")+'</div>';
+    return '<div class="card"><div class="item" style="padding-top:0"><button class="clickable" style="width:auto" data-act="editp" data-g="'+g.g+'" aria-label="Modifier">'+thumb(b)+'</button><button class="grow clickable" data-act="editp" data-g="'+g.g+'"><div class="t">'+esc(b.name)+'</div><div class="s">'+esc([b.category,b.color].filter(Boolean).join(" · "))+'</div><div class="s">Prix de vente '+F(b.price)+'</div></button><span class="pill '+(flag?'warn':'good')+'">'+g.total+' au total</span></div>'+
+      g.items.map(function(p){return '<div class="vrow"><span class="t">'+(p.size?esc(p.size)+' MM':'Taille unique')+'</span><span style="display:flex;gap:10px;align-items:center">'+((p.stock||0)<=0?'<span class="pill bad">Rupture</span>':(p.stock||0)<=(p.alert==null?3:p.alert)?'<span class="pill warn">Faible</span>':'')+'<span class="stepper"><button data-act="adj" data-id="'+p.id+'" data-d="-1" aria-label="Retirer un">−</button><span class="num">'+(p.stock||0)+'</span><button data-act="adj" data-id="'+p.id+'" data-d="1" aria-label="Ajouter un">+</button></span></span></div>'}).join("")+'<div style="display:flex;justify-content:flex-end;margin-top:10px"><button class="btn small" data-act="dupp" data-g="'+g.g+'">⧉ Dupliquer</button></div></div>';
   }).join("");
   return '<div style="display:flex;flex-direction:column;gap:14px"><div class="row"><h2 class="grow" style="min-width:60px">Stock</h2><button class="btn" data-act="cats">Catalogues</button><button class="btn primary" data-act="newp">+ Nouveau produit</button></div>'+
    '<input id="search" type="search" placeholder="Chercher un modèle, une taille, une couleur" value="'+esc(q)+'">'+
