@@ -187,7 +187,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=54;
+var PAGE_V=55;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -325,7 +325,7 @@ function nSize(x){return String(x==null?"":x).replace(/\s+/g,"")}
 function idTime(p){return /^[a-z][0-9a-z]{11}$/.test(p.id)?parseInt(p.id.slice(1,-3),36)||0:0}
 function groups(){
   var m={};products.forEach(function(p){var g=p.g||p.id;(m[g]||(m[g]={g:g,items:[]})).items.push(p)});
-  return Object.keys(m).map(function(k){var o=m[k];o.items.sort(function(a,b){return sizeKey(a.size)-sizeKey(b.size)||String(a.size).localeCompare(String(b.size))});o.base=o.items[0];o.t=Math.min.apply(null,o.items.map(idTime));o.total=o.items.reduce(function(s,p){return s+(p.stock||0)},0);return o}).sort(function(a,b){return (a.base.name+a.base.color).localeCompare(b.base.name+b.base.color,"fr")});
+  return Object.keys(m).map(function(k){var o=m[k];var seen={};o.items=o.items.filter(function(p){var z=nSize(p.size);if(seen[z])return false;seen[z]=1;return true});o.items.sort(function(a,b){return sizeKey(a.size)-sizeKey(b.size)||String(a.size).localeCompare(String(b.size))});o.base=o.items[0];o.t=Math.min.apply(null,o.items.map(idTime));o.total=o.items.reduce(function(s,p){return s+(p.stock||0)},0);return o}).sort(function(a,b){return (a.base.name+a.base.color).localeCompare(b.base.name+b.base.color,"fr")});
 }
 function viewStock(){
   var ql=q.toLowerCase();
