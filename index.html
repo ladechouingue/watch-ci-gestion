@@ -187,7 +187,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=53;
+var PAGE_V=54;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -623,7 +623,7 @@ function productSheet(arg,dup){
   var items=g?products.filter(function(p){return (p.g||p.id)===g}):[];
   var b=items[0]||{name:"",category:"Bracelet",color:"",cost:"",price:"",alert:3};
   if(dup){curGroup={g:uid("g"),items:[],photo:""};b=Object.assign({},b,{photo:""});g=null}else curGroup={g:g||uid("g"),items:items,photo:b.photo||""};
-  var state={};items.forEach(function(p){var k=nSize(p.size);if(state[k])state[k].stock+=p.stock||0;else state[k]={on:true,stock:dup?0:(p.stock||0)}});
+  var state={};items.forEach(function(p){var k=nSize(p.size);if(state[k])state[k].stock=Math.max(state[k].stock,p.stock||0);else state[k]={on:true,stock:dup?0:(p.stock||0)}});
   var cats=["Bracelet","Coque","Antichoc","Autre"];if(b.category&&cats.indexOf(b.category)<0)cats.push(b.category);
   openSheet('<h2>'+(dup?'Dupliquer le produit':g?'Modifier le produit':'Nouveau produit')+'</h2>'+
    '<div class="photo"><div class="thumb" id="p_prev">'+(b.photo?'<img alt="" src="'+esc(b.photo)+'">':'Photo')+'</div><div style="display:flex;flex-direction:column;gap:6px"><label class="btn small" style="text-align:center">Prendre ou choisir une photo<input id="p_file" type="file" accept="image/*" hidden></label><span id="p_ph_msg" style="color:var(--muted);font-size:13px">Photo réelle de l\'article</span></div></div>'+
@@ -634,7 +634,9 @@ function productSheet(arg,dup){
    '<label class="f">Alerte quand une taille atteint ce stock<input id="p_alert" type="number" min="0" value="'+(b.alert==null?3:b.alert)+'" inputmode="numeric"></label>'+
    '<div class="row">'+(g?'<button class="btn danger" data-act="delp" data-confirm="Supprimer ce produit ?">Supprimer</button><button class="btn" data-act="dupp" data-g="'+g+'">Dupliquer</button>':'')+'<span class="grow"></span><button class="btn" data-act="close">Annuler</button><button class="btn primary" data-act="savep">Enregistrer</button></div>');
 }
+var savingP=false;
 var saveProduct=guard(function(){
+  if(savingP)return;
   var name=$("#p_name").value.trim();if(!name){toast("Indiquez le nom du modèle.");return}
   var st=readSizes(),chosen=Object.keys(st).filter(function(k){return st[k].on});
   if(!chosen.length){toast("Cochez au moins une taille.");return}
@@ -646,7 +648,7 @@ var saveProduct=guard(function(){
   chosen.forEach(function(sz){var ex=bySize[sz];var d=Object.assign({},shared,{g:curGroup.g,size:sz,stock:st[sz].stock});if(ph)d.photo=ph;
     chain=chain.then(function(){return api("save",{coll:"products",id:ex?ex.id:uid("p"),data:d})})});
   curGroup.items.forEach(function(p){if(chosen.indexOf(nSize(p.size))<0||bySize[nSize(p.size)]!==p)chain=chain.then(function(){return api("delete",{coll:"products",id:p.id})})});
-  return chain.then(refresh).then(function(){pendingPhoto=null;closeSheet();toast("Produit enregistré.")});
+  savingP=true;return chain.then(refresh).then(function(){savingP=false;pendingPhoto=null;closeSheet();toast("Produit enregistré.")},function(e){savingP=false;throw e});
 });
 var delGroup=guard(function(){
   var chain=Promise.resolve();curGroup.items.forEach(function(p){chain=chain.then(function(){return api("delete",{coll:"products",id:p.id})})});
