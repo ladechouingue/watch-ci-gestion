@@ -187,7 +187,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=50;
+var PAGE_V=51;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -322,13 +322,14 @@ var BR=["38/40/41/42","42/44/45/46/49"], CO=["40","41","42","44","45","46","49"]
 function presets(cat){return cat==="Coque"||cat==="Antichoc"?CO:cat==="Bracelet"?BR:[]}
 function sizeKey(s){var n=parseFloat(s);return isNaN(n)?9999:n}
 function nSize(x){return String(x==null?"":x).replace(/\s+/g,"")}
+function idTime(p){return /^[a-z][0-9a-z]{11}$/.test(p.id)?parseInt(p.id.slice(1,-3),36)||0:0}
 function groups(){
   var m={};products.forEach(function(p){var g=p.g||p.id;(m[g]||(m[g]={g:g,items:[]})).items.push(p)});
-  return Object.keys(m).map(function(k){var o=m[k];o.items.sort(function(a,b){return sizeKey(a.size)-sizeKey(b.size)||String(a.size).localeCompare(String(b.size))});o.base=o.items[0];o.total=o.items.reduce(function(s,p){return s+(p.stock||0)},0);return o}).sort(function(a,b){return (a.base.name+a.base.color).localeCompare(b.base.name+b.base.color,"fr")});
+  return Object.keys(m).map(function(k){var o=m[k];o.items.sort(function(a,b){return sizeKey(a.size)-sizeKey(b.size)||String(a.size).localeCompare(String(b.size))});o.base=o.items[0];o.t=Math.min.apply(null,o.items.map(idTime));o.total=o.items.reduce(function(s,p){return s+(p.stock||0)},0);return o}).sort(function(a,b){return (a.base.name+a.base.color).localeCompare(b.base.name+b.base.color,"fr")});
 }
 function viewStock(){
   var ql=q.toLowerCase();
-  var gs=groups().filter(function(g){return !ql||(g.base.name+" "+(g.base.color||"")+" "+(g.base.category||"")+" "+g.items.map(function(p){return p.size}).join(" ")).toLowerCase().indexOf(ql)>=0});
+  var gs=groups().sort(function(a,b){return b.t-a.t}).filter(function(g){return !ql||(g.base.name+" "+(g.base.color||"")+" "+(g.base.category||"")+" "+g.items.map(function(p){return p.size}).join(" ")).toLowerCase().indexOf(ql)>=0});
   var cards=gs.map(function(g){
     var b=g.base,flag=g.items.some(function(p){return (p.stock||0)<=(p.alert==null?3:p.alert)});
     return '<div class="card"><div class="item" style="padding-top:0"><button class="clickable" style="width:auto" data-act="editp" data-g="'+g.g+'" aria-label="Modifier">'+thumb(b)+'</button><button class="grow clickable" data-act="editp" data-g="'+g.g+'"><div class="t">'+esc(b.name)+'</div><div class="s">'+esc([b.category,b.color].filter(Boolean).join(" · "))+'</div><div class="s">Prix de vente '+F(b.price)+'</div></button><span class="pill '+(flag?'warn':'good')+'">'+g.total+' au total</span></div>'+
@@ -616,22 +617,22 @@ function sizeRows(cat,state){
 function readSizes(){
   var st={};document.querySelectorAll("#sizes .srow").forEach(function(r){st[r.dataset.size]={on:r.querySelector('[data-s=on]').checked,stock:parseInt(r.querySelector('[data-s=stock]').value,10)||0}});return st;
 }
-function productSheet(arg){
+function productSheet(arg,dup){
   pendingPhoto=null;
   var g=null;if(arg){var one=pById(arg);g=one?(one.g||one.id):arg}
   var items=g?products.filter(function(p){return (p.g||p.id)===g}):[];
   var b=items[0]||{name:"",category:"Bracelet",color:"",cost:"",price:"",alert:3};
-  curGroup={g:g||uid("g"),items:items,photo:b.photo||""};
-  var state={};items.forEach(function(p){var k=nSize(p.size);if(state[k])state[k].stock+=p.stock||0;else state[k]={on:true,stock:p.stock||0}});
+  if(dup){curGroup={g:uid("g"),items:[],photo:""};b=Object.assign({},b,{photo:""});g=null}else curGroup={g:g||uid("g"),items:items,photo:b.photo||""};
+  var state={};items.forEach(function(p){var k=nSize(p.size);if(state[k])state[k].stock+=p.stock||0;else state[k]={on:true,stock:dup?0:(p.stock||0)}});
   var cats=["Bracelet","Coque","Antichoc","Autre"];if(b.category&&cats.indexOf(b.category)<0)cats.push(b.category);
-  openSheet('<h2>'+(g?'Modifier le produit':'Nouveau produit')+'</h2>'+
+  openSheet('<h2>'+(dup?'Dupliquer le produit':g?'Modifier le produit':'Nouveau produit')+'</h2>'+
    '<div class="photo"><div class="thumb" id="p_prev">'+(b.photo?'<img alt="" src="'+esc(b.photo)+'">':'Photo')+'</div><div style="display:flex;flex-direction:column;gap:6px"><label class="btn small" style="text-align:center">Prendre ou choisir une photo<input id="p_file" type="file" accept="image/*" hidden></label><span id="p_ph_msg" style="color:var(--muted);font-size:13px">Photo réelle de l\'article</span></div></div>'+
    '<label class="f">Modèle<input id="p_name" type="text" value="'+esc(b.name)+'" placeholder="Ex. Bracelet Boucle Nylon"></label>'+
    '<div class="grid2"><label class="f">Catégorie<select id="p_cat">'+cats.map(function(c){return '<option'+(c===b.category?' selected':'')+'>'+esc(c)+'</option>'}).join("")+'</select></label><label class="f">Couleur<input id="p_color" type="text" value="'+esc(b.color||"")+'"></label></div>'+
    '<label class="f">Prix de vente (F)<input id="p_price" type="number" min="0" value="'+esc(b.price)+'" inputmode="numeric"></label>'+
    '<div class="card"><h3>Tailles et stock</h3><p style="margin:4px 0 8px;color:var(--muted);font-size:13px">Cochez les tailles que vous vendez pour ce modèle et indiquez le stock de chacune. Décocher une taille la supprime.</p><div id="sizes">'+sizeRows(b.category,state)+'</div><div class="row" style="margin-top:8px"><input id="p_newsize" type="text" placeholder="Autre taille (ex. 47)" style="flex:1"><button class="btn small" data-act="addsize" type="button">Ajouter</button></div></div>'+
    '<label class="f">Alerte quand une taille atteint ce stock<input id="p_alert" type="number" min="0" value="'+(b.alert==null?3:b.alert)+'" inputmode="numeric"></label>'+
-   '<div class="row">'+(g?'<button class="btn danger" data-act="delp" data-confirm="Supprimer ce produit ?">Supprimer</button>':'')+'<span class="grow"></span><button class="btn" data-act="close">Annuler</button><button class="btn primary" data-act="savep">Enregistrer</button></div>');
+   '<div class="row">'+(g?'<button class="btn danger" data-act="delp" data-confirm="Supprimer ce produit ?">Supprimer</button><button class="btn" data-act="dupp" data-g="'+g+'">Dupliquer</button>':'')+'<span class="grow"></span><button class="btn" data-act="close">Annuler</button><button class="btn primary" data-act="savep">Enregistrer</button></div>');
 }
 var saveProduct=guard(function(){
   var name=$("#p_name").value.trim();if(!name){toast("Indiquez le nom du modèle.");return}
@@ -722,6 +723,7 @@ document.addEventListener("click",function(e){
       var inp=hd.querySelector("input");inp.focus();inp.select();break}
     case "catren_ok":{var nm=b.parentNode.querySelector("input").value.trim();if(!nm){toast("Indiquez un nom.");break}
       api("cat_rename",{file:b.dataset.f,label:nm}).then(function(){toast("Nom modifié.");catSheet()}).catch(function(e){toast(e.message)});break}
+    case "dupp":productSheet(b.dataset.g,true);break;
     case "editp":productSheet(id||b.dataset.g);break;
     case "savep":saveProduct();break;
     case "delp":delGroup();break;
