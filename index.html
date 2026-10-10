@@ -187,7 +187,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=56;
+var PAGE_V=57;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -264,10 +264,10 @@ function viewHome(){
   var stockValue=products.reduce(function(s,p){return s+Math.max(0,p.stock||0)*(p.price||0)},0);
   var feeTot=0;inM.forEach(function(o){feeTot+=(o.fee||0)+mmFee(o)});var net=rev-feeTot-expTot-expMarch;
   var tiles='<div class="grid3">'+
-   '<div class="card kpi"><span>Ventes</span><b>'+F(rev)+'</b><small>'+inM.length+' commande'+(inM.length>1?'s':'')+'</small></div>'+
+   '<div class="card kpi"><span>Chiffre d\'affaires</span><b>'+F(rev)+'</b><small>'+inM.length+' commande'+(inM.length>1?'s':'')+' · ventes sans livraison</small></div>'+
    '<div class="card kpi"><span>Achats de marchandises</span><b>'+F(expMarch)+'</b><small>Payé aux fournisseurs</small></div>'+
    '<div class="card kpi"><span>Autres dépenses</span><b>'+F(expTot)+'</b><small>Pub Meta, emballage, outils…</small></div>'+
-   '<div class="card kpi main"><span>Bénéfice net</span><b style="'+(net<0?'color:var(--bad)':'')+'">'+F(net)+'</b><small>Ventes moins toutes les dépenses</small></div>'+
+   '<div class="card kpi main"><span>Bénéfice net</span><b style="'+(net<0?'color:var(--bad)':'')+'">'+F(net)+'</b><small>Chiffre d\'affaires moins toutes les dépenses</small></div>'+
    '<div class="card kpi"><span>Reste en caisse</span><b style="'+(cash<0?'color:var(--bad)':'')+'">'+F(cash)+'</b><small>Encaissé moins tout ce qui est sorti</small></div>'+
    '<div class="card kpi"><span>À encaisser</span><b>'+F(due)+'</b><small>Commandes non payées</small></div></div>';
   // graphique 6 mois
