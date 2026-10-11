@@ -187,7 +187,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=63;
+var PAGE_V=64;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -463,6 +463,7 @@ function settingsSheet(){
     '<a class="setrow" href="api.php?r=export"><span>Télécharger une sauvegarde</span>'+chev+'</a>'+
     '<button class="setrow" data-act="bk" type="button"><span>Sauvegarde par e-mail et restauration</span>'+chev+'</button>'+
     '<button class="setrow" data-act="inv" type="button"><span>Reçu (logo, téléphone, adresse)</span>'+chev+'</button>'+
+    '<button class="setrow" data-act="prices" type="button"><span>Changer les prix en masse</span>'+chev+'</button>'+
     '<button class="setrow" data-act="woo" type="button"><span>Lien avec le site (WooCommerce)</span>'+chev+'</button>'+
     '<button class="setrow" data-act="chkupd" type="button"><span>Vérifier les mises à jour</span>'+chev+'</button>'+
     '<button class="setrow" data-act="rollback" data-confirm="Revenir à la version précédente ?" type="button"><span>Version précédente</span>'+chev+'</button>'+
@@ -515,6 +516,21 @@ var wooRep=guard(function(){
       openSheet('<h2>Catalogue remplacé</h2><p><b>'+ok+'</b> produit'+(ok>1?'s':'')+' créé'+(ok>1?'s':'')+' sur le site. '+j0.trashed+' ancien'+(j0.trashed>1?'s':'')+' produit'+(j0.trashed>1?'s':'')+' mis à la corbeille.</p>'+(bad.length?'<div class="card"><div class="s" style="color:var(--muted)">Erreurs :</div>'+bad.map(function(n){return '<div class="s">'+esc(n)+'</div>'}).join("")+'</div>':'')+'<div class="row"><button class="btn grow" data-act="close">Fermer</button></div>');
     });
   });
+});
+
+function pricesSheet(){
+  var row=function(i,a,b){return '<div class="grid2"><label class="f">Ancien prix (F)<input class="pr_from" type="number" inputmode="numeric" value="'+a+'"></label><label class="f">Nouveau prix (F)<input class="pr_to" type="number" inputmode="numeric" value="'+b+'"></label></div>'};
+  openSheet('<h2>Changer les prix</h2><p class="s" style="color:var(--muted)">Tous les produits qui ont l\'ancien prix passent au nouveau. Les commandes déjà faites ne changent pas. Ensuite, « Envoyer le stock au site » met aussi les prix à jour sur WooCommerce.</p>'+row(0,3300,5000)+row(1,7500,10000)+
+    '<div class="row"><button class="btn grow" data-act="close" type="button">Annuler</button><button class="btn primary grow" data-act="pricesgo" type="button">Appliquer</button></div>');
+}
+var pricesGo=guard(function(){
+  var f=document.querySelectorAll(".pr_from"),t=document.querySelectorAll(".pr_to"),map={};
+  for(var i=0;i<f.length;i++){var a=parseFloat(f[i].value),b=parseFloat(t[i].value);if(a>0&&b>0)map[a]=b}
+  var list=products.filter(function(p){return map[p.price]!=null});
+  if(!list.length){toast("Aucun produit à ce prix.");return}
+  var chain=Promise.resolve();
+  list.forEach(function(p){var d=Object.assign({},p);delete d.id;d.price=map[p.price];chain=chain.then(function(){return api("save",{coll:"products",id:p.id,data:d})})});
+  return chain.then(refresh).then(function(){closeSheet();toast(list.length+" article"+(list.length>1?"s":"")+" mis à jour.")});
 });
 
 function invSheet(){
@@ -754,6 +770,8 @@ document.addEventListener("click",function(e){
     case "woosave":wooSave();break;
     case "wooplan":wooPlan();break;
     case "woosync":wooSync();break;
+    case "prices":pricesSheet();break;
+    case "pricesgo":pricesGo();break;
     case "woorep":wooRep();break;
     case "bksave":api("bk_set",{email:$("#bk_mail").value.trim()}).then(function(){toast($("#bk_mail").value.trim()?"Adresse enregistrée.":"Envoi désactivé.")}).catch(function(e){toast(e.message)});break;
     case "bktest":b.disabled=true;b.textContent="Envoi…";api("bk_set",{email:$("#bk_mail").value.trim()}).then(function(){return api("bk_test",{})}).then(function(){toast("E-mail envoyé. Vérifiez votre boîte (et les courriers indésirables).");bkSheet()}).catch(function(e){b.disabled=false;b.textContent="Envoyer un test";toast(e.message)});break;

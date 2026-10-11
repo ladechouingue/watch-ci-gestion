@@ -873,12 +873,12 @@ switch ($r) {
                         if ($vn && !array_diff($vn, $tn)) { $stock = $st; break; }
                     }
                     if ($stock === null) { $notes[] = $g['name'] . ' · « ' . $v['label'] . ' » : taille non trouvée dans l\'outil'; continue; }
-                    wooReq($c, 'PUT', 'products/' . $wid . '/variations/' . $v['id'], ['manage_stock' => true, 'stock_quantity' => max(0, $stock)]);
+                    wooReq($c, 'PUT', 'products/' . $wid . '/variations/' . $v['id'], ['manage_stock' => true, 'stock_quantity' => max(0, $stock), 'regular_price' => (string)(int)round($g['price'])]);
                     $done++;
                 }
             } else {
                 $tot = array_sum($g['sizes']);
-                wooReq($c, 'PUT', 'products/' . $wid, ['manage_stock' => true, 'stock_quantity' => max(0, (int)$tot)]);
+                wooReq($c, 'PUT', 'products/' . $wid, ['manage_stock' => true, 'stock_quantity' => max(0, (int)$tot), 'regular_price' => (string)(int)round($g['price'])]);
                 $done++;
             }
         }
