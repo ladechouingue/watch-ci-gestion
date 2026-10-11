@@ -188,7 +188,7 @@ function wooCreate(PDO $pdo, array $c, array $g, array $cats, array $trashed): s
     $cl = wooCatIds($pdo, $g, $cats, $trashed);
     if ($cl) { $data['categories'] = array_map(function ($i) { return ['id' => $i]; }, $cl); }
     if (preg_match('#^uploads/[a-f0-9]{24}\.jpg$#', $g['photo'])) { $data['images'] = [['src' => $proto . '://' . ($_SERVER['HTTP_HOST'] ?? '') . $dir . '/' . $g['photo']]]; }
-    $price = (string)(int)round($g['price']);
+    $price = wooPrice($g['price']);
     $sizes = $g['sizes']; $keys = array_keys($sizes);
     $single = count($keys) === 1 && $keys[0] === '';
     if ($single) {
@@ -208,9 +208,10 @@ function wooCreate(PDO $pdo, array $c, array $g, array $cats, array $trashed): s
 
 /* Met à jour un produit du site (stock, prix, catégories) à partir d'un produit de l'outil */
 function wooUpdate(PDO $pdo, array $c, array $g, array $x, array $cats, array $trashed, array &$notes): int {
-    $n = 0; $wid = (int)$x['id']; $price = (string)(int)round($g['price']);
+    $n = 0; $wid = (int)$x['id']; $price = wooPrice($g['price']);
     $ids = wooCatIds($pdo, $g, $cats, $trashed);
     $catPart = $ids ? ['categories' => array_map(function ($i) { return ['id' => $i]; }, $ids)] : [];
+    $ph = wooPhoto($g); if ($ph) { $catPart['images'] = $ph; }
     if ($x['type'] === 'variable' && $x['vars']) {
         foreach ($x['vars'] as $v) {
             $vn = wooNums($v['label']); $stock = null;
@@ -227,6 +228,14 @@ function wooUpdate(PDO $pdo, array $c, array $g, array $x, array $cats, array $t
     return $n;
 }
 function wooSig(array $g): string { return md5(json_encode([$g['name'], $g['color'], $g['price'], $g['cat'], $g['mat'], $g['photo'], $g['sizes']])); }
+
+function wooPrice(float $p): string { $p = (int)round($p); if ($p === 3300) { $p = 5000; } elseif ($p === 7500) { $p = 10000; } return (string)$p; }
+function wooPhoto(array $g): ?array {
+    if (!preg_match('#^uploads/[a-f0-9]{24}\.jpg$#', (string)$g['photo'])) { return null; }
+    $proto = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $dir = rtrim(str_replace('\\', '/', dirname((string)($_SERVER['SCRIPT_NAME'] ?? '/api.php'))), '/');
+    return [['src' => $proto . '://' . ($_SERVER['HTTP_HOST'] ?? '') . $dir . '/' . $g['photo']]];
+}
 
 function httpGet(string $url, array $headers = [], int $timeout = 30): array {
     $headers[] = 'User-Agent: watch-ci-gestion';
@@ -1009,12 +1018,12 @@ switch ($r) {
                         if ($vn && !array_diff($vn, $tn)) { $stock = $st; break; }
                     }
                     if ($stock === null) { $notes[] = $g['name'] . ' · « ' . $v['label'] . ' » : taille non trouvée dans l\'outil'; continue; }
-                    wooReq($c, 'PUT', 'products/' . $wid . '/variations/' . $v['id'], ['manage_stock' => true, 'stock_quantity' => max(0, $stock), 'regular_price' => (string)(int)round($g['price'])]);
+                    wooReq($c, 'PUT', 'products/' . $wid . '/variations/' . $v['id'], ['manage_stock' => true, 'stock_quantity' => max(0, $stock), 'regular_price' => wooPrice($g['price'])]);
                     $done++;
                 }
             } else {
                 $tot = array_sum($g['sizes']);
-                wooReq($c, 'PUT', 'products/' . $wid, ['manage_stock' => true, 'stock_quantity' => max(0, (int)$tot), 'regular_price' => (string)(int)round($g['price'])]);
+                wooReq($c, 'PUT', 'products/' . $wid, ['manage_stock' => true, 'stock_quantity' => max(0, (int)$tot), 'regular_price' => wooPrice($g['price'])]);
                 $done++;
             }
         }
