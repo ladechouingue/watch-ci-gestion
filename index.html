@@ -187,7 +187,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=67;
+var PAGE_V=68;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -323,12 +323,15 @@ var MATS=["Cuir","Métal","Nylon","Silicone"],ACCS=["Antichoc","Chargeur","Coque
 function catOf(v){v=String(v||"");return v.indexOf("|")>=0?v.split("|")[0]:v}
 function noAcc(t){return String(t).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"")}
 function matGuess(p){if(p.mat)return p.mat;var n=noAcc((p.name||"")+" "+(p.color||""));for(var i=0;i<MATS.length;i++){if(n.indexOf(noAcc(MATS[i]))>=0)return MATS[i]}return ""}
-function catSelect(b){
-  var cur=b.category==="Bracelet"||!b.category?"Bracelet|"+matGuess(b):b.category;
-  var known=MATS.map(function(m){return "Bracelet|"+m}).concat(ACCS);
-  var extra=known.indexOf(cur)<0&&cur!=="Bracelet|"?'<option value="'+esc(cur)+'" selected>'+esc(cur.replace("|"," › "))+'</option>':'';
-  var none=cur==="Bracelet|"?'<option value="Bracelet|" selected>Bracelet (matière à choisir)</option>':'';
-  return '<select id="p_cat">'+none+extra+'<optgroup label="Bracelet">'+MATS.map(function(m){return '<option value="Bracelet|'+m+'"'+(cur==="Bracelet|"+m?' selected':'')+'>'+m+'</option>'}).join("")+'</optgroup><optgroup label="Accessoires">'+ACCS.map(function(a){return '<option value="'+a+'"'+(cur===a?' selected':'')+'>'+a+'</option>'}).join("")+'</optgroup></select>';
+function catSelect(b,sz){
+  var cur,grp=sz&&String(sz).indexOf("38")===0?"S":sz?"L":"S";
+  if(b.category==="Bracelet"||!b.category)cur="Bracelet|"+matGuess(b)+"|"+grp;else cur=b.category;
+  var opt=function(v,l){return '<option value="'+v+'"'+(cur===v?' selected':'')+'>'+l+'</option>'};
+  var none=/^Bracelet\|\|/.test(cur)?'<option value="'+cur+'" selected>Bracelet (matière à choisir)</option>':'';
+  var known=cur.indexOf("|")>=0||ACCS.indexOf(cur)>=0;
+  var extra=known?'':'<option value="'+esc(cur)+'" selected>'+esc(cur)+'</option>';
+  var g=function(lab,k){return '<optgroup label="'+lab+'">'+MATS.map(function(m){return opt("Bracelet|"+m+"|"+k,m)}).join("")+'</optgroup>'};
+  return '<select id="p_cat">'+none+extra+g("Bracelet 38/40/41/42","S")+g("Bracelet 42/44/45/46/49","L")+'<optgroup label="Accessoires">'+ACCS.map(function(a){return opt(a,a)}).join("")+'</optgroup></select>';
 }
 function presets(cat){cat=catOf(cat);return cat==="Coque"||cat==="Antichoc"?CO:cat==="Bracelet"?BR:[]}
 function sizeKey(s){var n=parseFloat(s);return isNaN(n)?9999:n}
@@ -712,7 +715,7 @@ function productSheet(arg,dup){
   openSheet('<h2>'+(dup?'Dupliquer le produit':g?'Modifier le produit':'Nouveau produit')+'</h2>'+
    '<div class="photo"><div class="thumb" id="p_prev">'+(b.photo?'<img alt="" src="'+esc(b.photo)+'">':'Photo')+'</div><div style="display:flex;flex-direction:column;gap:6px"><label class="btn small" style="text-align:center">Prendre ou choisir une photo<input id="p_file" type="file" accept="image/*" hidden></label><span id="p_ph_msg" style="color:var(--muted);font-size:13px">Photo réelle de l\'article</span></div></div>'+
    '<label class="f">Modèle<input id="p_name" type="text" value="'+esc(b.name)+'" placeholder="Ex. Bracelet Boucle Nylon"></label>'+
-   '<div class="grid2"><label class="f">Catégorie'+catSelect(b)+'</label><label class="f">Couleur<input id="p_color" type="text" value="'+esc(b.color||"")+'"></label></div>'+
+   '<div class="grid2"><label class="f">Catégorie'+catSelect(b,items.length?nSize(items[0].size):"")+'</label><label class="f">Couleur<input id="p_color" type="text" value="'+esc(b.color||"")+'"></label></div>'+
    '<label class="f">Prix de vente (F)<input id="p_price" type="number" min="0" value="'+esc(b.price)+'" inputmode="numeric"></label>'+
    '<div class="card"><h3>Tailles et stock</h3><p style="margin:4px 0 8px;color:var(--muted);font-size:13px">Cochez les tailles que vous vendez pour ce modèle et indiquez le stock de chacune. Décocher une taille la supprime.</p><div id="sizes">'+sizeRows(b.category,state)+'</div><div class="row" style="margin-top:8px"><input id="p_newsize" type="text" placeholder="Autre taille (ex. 47)" style="flex:1"><button class="btn small" data-act="addsize" type="button">Ajouter</button></div></div>'+
    '<label class="f">Alerte quand une taille atteint ce stock<input id="p_alert" type="number" min="0" value="'+(b.alert==null?3:b.alert)+'" inputmode="numeric"></label>'+
@@ -841,7 +844,7 @@ document.addEventListener("input",function(e){
 document.addEventListener("change",function(e){
   if(e.target.id==="o_paid"){$("#o_mmw").hidden=!e.target.checked;return}
   if(e.target.id==="x_cat"){var cv=e.target.value,m=cv===MARCH,hh=cv==="Hébergement web",dd=cv==="Nom de domaine";$("#x_march").hidden=!m;$("#x_per").hidden=!hh;$("#x_domhint").hidden=!dd;$("#x_chan").hidden=m||cv===META||hh||dd;return}
-  if(e.target.id==="p_cat"){var cur=readSizes();$("#sizes").innerHTML=sizeRows(e.target.value,cur);return}
+  if(e.target.id==="p_cat"){var cur=readSizes(),pv=e.target.value.split("|");if(pv[0]==="Bracelet"&&pv[2]){var kk=pv[2]==="S"?BR[0]:BR[1];cur[kk]={on:true,stock:cur[kk]?cur[kk].stock:0}}$("#sizes").innerHTML=sizeRows(e.target.value,cur);return}
   if(e.target.id==="p_file"){var f=e.target.files&&e.target.files[0];if(f)uploadPhoto(f);e.target.value="";return}
   if(e.target.id==="yearSel"){var yv=e.target.value,cm=month.length===7?month.slice(5):"";month=yv==="all"?"all":yv+(cm?"-"+cm:"");render();return}
   if(e.target.id==="monthSel"){var yy=month==="all"?today().slice(0,4):month.slice(0,4),mv=e.target.value;month=mv?yy+"-"+mv:yy;render();return}
