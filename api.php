@@ -411,11 +411,20 @@ function buildInvoice(array $o, string $num, array $biz = []): string {
 switch ($r) {
     case 'state':
         $bkTo = (string)(setting($pdo, 'bk_email') ?? '');
-        if ($bkTo !== '' && substr((string)setting($pdo, 'bk_last'), 0, 10) !== date('Y-m-d') && (int)setting($pdo, 'bk_try') !== (int)date('Ymd') * 100 + (int)date('G')) {
-            setSetting($pdo, 'bk_try', (string)((int)date('Ymd') * 100 + (int)date('G')));
-            try { bkSend($pdo, $bkTo); } catch (Throwable $e) { }
-        }
-        out(['products' => load($pdo, 'products'), 'orders' => load($pdo, 'orders'), 'expenses' => load($pdo, 'expenses')]);
+        $doBk = $bkTo !== '' && substr((string)setting($pdo, 'bk_last'), 0, 10) !== date('Y-m-d') && (int)setting($pdo, 'bk_try') !== (int)date('Ymd') * 100 + (int)date('G');
+        $payload = json_encode(['products' => load($pdo, 'products'), 'orders' => load($pdo, 'orders'), 'expenses' => load($pdo, 'expenses')], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if (!$doBk) { http_response_code(200); echo $payload; exit; }
+        /* La sauvegarde du jour part APRÈS l'envoi des données, pour ne jamais bloquer l'ouverture */
+        setSetting($pdo, 'bk_try', (string)((int)date('Ymd') * 100 + (int)date('G')));
+        session_write_close();
+        ignore_user_abort(true); @set_time_limit(180);
+        header('Connection: close');
+        echo $payload;
+        while (ob_get_level() > 0) { @ob_end_flush(); }
+        @flush();
+        if (function_exists('fastcgi_finish_request')) { @fastcgi_finish_request(); }
+        try { bkSend($pdo, $bkTo); } catch (Throwable $e) { }
+        exit;
 
     case 'export':
                 @ini_set('memory_limit', '512M');
