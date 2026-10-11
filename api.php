@@ -767,6 +767,7 @@ switch ($r) {
     }
 
     case 'woo_plan': {
+        session_write_close();
         @set_time_limit(120);
         $c = wooCfg($pdo);
         $site = wooProducts($c);
@@ -789,6 +790,7 @@ switch ($r) {
     }
 
     case 'woo_replace': {
+        session_write_close();
         if (!$isPost) { fail('POST requis.', 405); }
         @set_time_limit(120);
         $c = wooCfg($pdo); $b = body(); $step = (int)($b['step'] ?? 0);
@@ -839,6 +841,7 @@ switch ($r) {
     }
 
     case 'woo_sync': {
+        session_write_close();
         if (!$isPost) { fail('POST requis.', 405); }
         @set_time_limit(180);
         $c = wooCfg($pdo);
