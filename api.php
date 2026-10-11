@@ -439,10 +439,11 @@ function buildInvoice(array $o, string $num, array $biz = []): string {
     $sub = 0; foreach ($items as $i) { $sub += (float)($i['qty'] ?? 0) * (float)($i['price'] ?? 0); }
     $mine = !empty($o['fee']);
     $ship = $mine ? 0.0 : (float)($o['dcost'] ?? 0);
-    $total = $sub + $ship;
+    $disc = (float)($o['disc'] ?? 0);
+    $total = $sub - $disc + $ship;
     $logo = $biz['logo'] ?? null;
     $paid = !empty($o['paid']);
-    $render = function (float $H) use ($o, $num, $biz, $items, $sub, $mine, $ship, $total, $logo, $paid): array {
+    $render = function (float $H) use ($o, $num, $biz, $items, $sub, $disc, $mine, $ship, $total, $logo, $paid): array {
         $c = '';
         $T = function (float $x, float $y, string $t, float $sz = 10, bool $b = false, string $al = 'l', string $col = '0.1 0.13 0.11') use (&$c, $H) {
             if ($al === 'r') { $x -= pdfW($t, $b, $sz); } elseif ($al === 'c') { $x -= pdfW($t, $b, $sz) / 2; }
@@ -485,6 +486,7 @@ function buildInvoice(array $o, string $num, array $biz = []): string {
         }
         $y += 20;
         $T(455, $y, 'Sous-total', 10, false, 'r'); $T(537, $y, money($sub), 10, false, 'r'); $y += 18;
+        if ($disc > 0) { $T(455, $y, 'Remise lot', 10, false, 'r'); $T(537, $y, '- ' . money($disc), 10, false, 'r'); $y += 18; }
         $T(455, $y, 'Livraison', 10, false, 'r'); $T(537, $y, ($mine || $ship == 0) ? 'Offerte' : money($ship), 10, false, 'r'); $y += 12;
         $R(330, $y, 217, 34, '0.87 0.39 0.06');
         $T(342, $y + 22, 'TOTAL', 11, true, 'l', '1 1 1'); $T(537, $y + 22, money($total), 14, true, 'r', '1 1 1');
