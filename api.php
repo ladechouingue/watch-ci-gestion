@@ -116,7 +116,7 @@ function wooGroups(PDO $pdo): array {
         $p = json_decode((string)$r['data'], true); if (!is_array($p)) { continue; }
         $g = (string)($p['g'] ?? ($p['id'] ?? '')); if ($g === '') { continue; }
         $sz = preg_replace('/\s+/', '', (string)($p['size'] ?? ''));
-        if (!isset($m[$g])) { $m[$g] = ['g' => $g, 'name' => trim((string)($p['name'] ?? '')), 'color' => trim((string)($p['color'] ?? '')), 'price' => (float)($p['price'] ?? 0), 'cat' => trim((string)($p['category'] ?? '')), 'photo' => (string)($p['photo'] ?? ''), 'sizes' => []]; }
+        if (!isset($m[$g])) { $m[$g] = ['g' => $g, 'name' => trim((string)($p['name'] ?? '')), 'color' => trim((string)($p['color'] ?? '')), 'price' => (float)($p['price'] ?? 0), 'cat' => trim((string)($p['category'] ?? '')), 'mat' => trim((string)($p['mat'] ?? '')), 'photo' => (string)($p['photo'] ?? ''), 'sizes' => []]; }
         if (!isset($m[$g]['sizes'][$sz])) { $m[$g]['sizes'][$sz] = (int)($p['stock'] ?? 0); }
     }
     return array_values($m);
@@ -162,8 +162,8 @@ function wooCatIds(PDO $pdo, array $g, array $cats, array $trashed): array {
     $nm = wooNorm($g['name'] . ' ' . $g['color']); $ids = [];
     $isBr = mb_strtolower($g['cat']) === 'bracelet' || $g['cat'] === '';
     if ($isBr && strpos($nm, 'chargeur') === false) {
-        $mat = '';
-        foreach (['cuir', 'metal', 'nylon', 'silicone'] as $m) { if (strpos($nm, $m) !== false) { $mat = $m; break; } }
+        $mat = wooNorm($g['mat'] ?? '');
+        if ($mat === '') { foreach (['cuir', 'metal', 'nylon', 'silicone'] as $m) { if (strpos($nm, $m) !== false) { $mat = $m; break; } } }
         $small = false; $large = false;
         foreach (array_keys($g['sizes']) as $sz) { $n = wooNums((string)$sz); if (in_array('38', $n, true)) { $small = true; } else { $large = true; } }
         foreach ([[$small, '38'], [$large, '44']] as $pair) {

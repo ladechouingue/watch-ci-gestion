@@ -187,7 +187,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=66;
+var PAGE_V=67;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -319,7 +319,18 @@ function viewOrders(){
    (list.length?list.map(function(o){return '<div class="card ordcard"><div class="list">'+orderRow(o)+'</div></div>'}).join(""):'<div class="card"><div class="empty">'+(ws.length?'Aucune commande trouvée.':'Aucune commande ici. Utilisez « Nouvelle commande » pour en saisir une.')+'</div></div>')+'</div>';
 }
 var BR=["38/40/41/42","42/44/45/46/49"], CO=["40","41","42","44","45","46","49"];
-function presets(cat){return cat==="Coque"||cat==="Antichoc"?CO:cat==="Bracelet"?BR:[]}
+var MATS=["Cuir","Métal","Nylon","Silicone"],ACCS=["Antichoc","Chargeur","Coque"];
+function catOf(v){v=String(v||"");return v.indexOf("|")>=0?v.split("|")[0]:v}
+function noAcc(t){return String(t).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"")}
+function matGuess(p){if(p.mat)return p.mat;var n=noAcc((p.name||"")+" "+(p.color||""));for(var i=0;i<MATS.length;i++){if(n.indexOf(noAcc(MATS[i]))>=0)return MATS[i]}return ""}
+function catSelect(b){
+  var cur=b.category==="Bracelet"||!b.category?"Bracelet|"+matGuess(b):b.category;
+  var known=MATS.map(function(m){return "Bracelet|"+m}).concat(ACCS);
+  var extra=known.indexOf(cur)<0&&cur!=="Bracelet|"?'<option value="'+esc(cur)+'" selected>'+esc(cur.replace("|"," › "))+'</option>':'';
+  var none=cur==="Bracelet|"?'<option value="Bracelet|" selected>Bracelet (matière à choisir)</option>':'';
+  return '<select id="p_cat">'+none+extra+'<optgroup label="Bracelet">'+MATS.map(function(m){return '<option value="Bracelet|'+m+'"'+(cur==="Bracelet|"+m?' selected':'')+'>'+m+'</option>'}).join("")+'</optgroup><optgroup label="Accessoires">'+ACCS.map(function(a){return '<option value="'+a+'"'+(cur===a?' selected':'')+'>'+a+'</option>'}).join("")+'</optgroup></select>';
+}
+function presets(cat){cat=catOf(cat);return cat==="Coque"||cat==="Antichoc"?CO:cat==="Bracelet"?BR:[]}
 function sizeKey(s){var n=parseFloat(s);return isNaN(n)?9999:n}
 function nSize(x){return String(x==null?"":x).replace(/\s+/g,"")}
 function idTime(p){return /^[a-z][0-9a-z]{11}$/.test(p.id)?parseInt(p.id.slice(1,-3),36)||0:0}
@@ -701,7 +712,7 @@ function productSheet(arg,dup){
   openSheet('<h2>'+(dup?'Dupliquer le produit':g?'Modifier le produit':'Nouveau produit')+'</h2>'+
    '<div class="photo"><div class="thumb" id="p_prev">'+(b.photo?'<img alt="" src="'+esc(b.photo)+'">':'Photo')+'</div><div style="display:flex;flex-direction:column;gap:6px"><label class="btn small" style="text-align:center">Prendre ou choisir une photo<input id="p_file" type="file" accept="image/*" hidden></label><span id="p_ph_msg" style="color:var(--muted);font-size:13px">Photo réelle de l\'article</span></div></div>'+
    '<label class="f">Modèle<input id="p_name" type="text" value="'+esc(b.name)+'" placeholder="Ex. Bracelet Boucle Nylon"></label>'+
-   '<div class="grid2"><label class="f">Catégorie<select id="p_cat">'+cats.map(function(c){return '<option'+(c===b.category?' selected':'')+'>'+esc(c)+'</option>'}).join("")+'</select></label><label class="f">Couleur<input id="p_color" type="text" value="'+esc(b.color||"")+'"></label></div>'+
+   '<div class="grid2"><label class="f">Catégorie'+catSelect(b)+'</label><label class="f">Couleur<input id="p_color" type="text" value="'+esc(b.color||"")+'"></label></div>'+
    '<label class="f">Prix de vente (F)<input id="p_price" type="number" min="0" value="'+esc(b.price)+'" inputmode="numeric"></label>'+
    '<div class="card"><h3>Tailles et stock</h3><p style="margin:4px 0 8px;color:var(--muted);font-size:13px">Cochez les tailles que vous vendez pour ce modèle et indiquez le stock de chacune. Décocher une taille la supprime.</p><div id="sizes">'+sizeRows(b.category,state)+'</div><div class="row" style="margin-top:8px"><input id="p_newsize" type="text" placeholder="Autre taille (ex. 47)" style="flex:1"><button class="btn small" data-act="addsize" type="button">Ajouter</button></div></div>'+
    '<label class="f">Alerte quand une taille atteint ce stock<input id="p_alert" type="number" min="0" value="'+(b.alert==null?3:b.alert)+'" inputmode="numeric"></label>'+
@@ -714,7 +725,7 @@ var saveProduct=guard(function(){
   var st=readSizes(),chosen=Object.keys(st).filter(function(k){return st[k].on});
   if(!chosen.length){toast("Cochez au moins une taille.");return}
   var alertV=parseInt($("#p_alert").value,10);if(isNaN(alertV))alertV=3;
-  var shared={name:name,category:$("#p_cat").value,color:$("#p_color").value.trim(),price:parseFloat($("#p_price").value)||0,alert:alertV};
+  var pc=$("#p_cat").value,shared={name:name,category:catOf(pc),mat:pc.indexOf("|")>=0?pc.split("|")[1]:"",color:$("#p_color").value.trim(),price:parseFloat($("#p_price").value)||0,alert:alertV};
   var ph=pendingPhoto||curGroup.photo;
   var bySize={};curGroup.items.forEach(function(p){var k=nSize(p.size);if(!bySize[k])bySize[k]=p});
   var chain=Promise.resolve();
