@@ -187,7 +187,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=62;
+var PAGE_V=63;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -475,7 +475,7 @@ function wooSheet(){
   api("woo_get").then(function(j){
     openSheet('<h2>Lien avec le site</h2><p class="s" style="color:var(--muted)">L\'outil envoie le stock de chaque produit à votre site WooCommerce. Sur le site : WooCommerce › Réglages › Avancé › API REST › Ajouter une clé (droits « Lecture/Écriture »).</p>'+
       '<label class="f">Adresse du site<input id="w_url" type="url" inputmode="url" placeholder="https://www.watchcotedivoire.com" value="'+esc(j.url)+'"></label>'+
-      '<label class="f">Clé client (ck_…)<input id="w_key" type="text" autocomplete="off" placeholder="'+(j.hasKeys?'Déjà enregistrée — laisser vide pour garder':'ck_…')+'"></label>'+
+      ''+(j.hasKeys?'<div class="pill good" style="align-self:flex-start">✔ Connecté · '+esc(j.hint)+'</div><div class="s" style="color:var(--muted)">Les clés sont enregistrées : inutile de les ressaisir. Remplissez les champs seulement pour les changer.</div>':'')+'<label class="f">Clé client (ck_…)<input id="w_key" type="text" autocomplete="off" placeholder="'+(j.hasKeys?'Déjà enregistrée — laisser vide pour garder':'ck_…')+'"></label>'+
       '<label class="f">Clé secrète (cs_…)<input id="w_sec" type="password" autocomplete="off" placeholder="'+(j.hasKeys?'Déjà enregistrée — laisser vide pour garder':'cs_…')+'"></label>'+
       '<div class="s" style="color:var(--muted)">'+(j.last?'Dernière synchronisation : '+esc(j.last):'Aucune synchronisation pour le moment.')+'</div>'+
       '<div class="row"><button class="btn primary grow" data-act="woosave" type="button">Enregistrer</button><button class="btn grow" data-act="wooplan" type="button">Voir les correspondances</button></div>'+

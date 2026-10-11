@@ -760,7 +760,7 @@ switch ($r) {
 
     case 'woo_get': {
         $c = wooCfg($pdo);
-        out(['url' => $c['url'], 'hasKeys' => $c['key'] !== '' && $c['secret'] !== '', 'last' => (string)(setting($pdo, 'woo_last') ?? '')]);
+        out(['url' => $c['url'], 'hasKeys' => $c['key'] !== '' && $c['secret'] !== '', 'hint' => $c['key'] !== '' ? 'ck_••••' . substr($c['key'], -4) : '', 'last' => (string)(setting($pdo, 'woo_last') ?? '')]);
     }
 
     case 'woo_set': {
