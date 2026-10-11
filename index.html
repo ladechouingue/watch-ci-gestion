@@ -187,7 +187,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=72;
+var PAGE_V=73;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -728,6 +728,7 @@ function productSheet(arg,dup){
    '<div class="photo"><div class="thumb" id="p_prev">'+(b.photo?'<img alt="" src="'+esc(b.photo)+'">':'Photo')+'</div><div style="display:flex;flex-direction:column;gap:6px"><label class="btn small" style="text-align:center">Prendre ou choisir une photo<input id="p_file" type="file" accept="image/*" hidden></label><span id="p_ph_msg" style="color:var(--muted);font-size:13px">Photo réelle de l\'article</span></div></div>'+
    '<label class="f">Modèle<input id="p_name" type="text" value="'+esc(b.name)+'" placeholder="Ex. Bracelet Boucle Nylon"></label>'+
    '<div class="grid2"><label class="f">Catégorie'+catSelect(b,items.length?nSize(items[0].size):"")+'</label><label class="f">Couleur<input id="p_color" type="text" value="'+esc(b.color||"")+'"></label></div>'+
+   '<label class="row" style="gap:8px"><input id="p_femme" type="checkbox" style="width:auto"'+(b.femme?' checked':'')+'> Afficher aussi dans « Bracelet femme » sur le site</label>'+
    '<label class="f">Prix de vente (F)<input id="p_price" type="number" min="0" value="'+esc(b.price)+'" inputmode="numeric"></label>'+
    '<div class="card"><h3>Tailles et stock</h3><p style="margin:4px 0 8px;color:var(--muted);font-size:13px">Cochez les tailles que vous vendez pour ce modèle et indiquez le stock de chacune. Décocher une taille la supprime.</p><div id="sizes">'+sizeRows(b.category,state)+'</div><div class="row" style="margin-top:8px"><input id="p_newsize" type="text" placeholder="Autre taille (ex. 47)" style="flex:1"><button class="btn small" data-act="addsize" type="button">Ajouter</button></div></div>'+
    '<label class="f">Alerte quand une taille atteint ce stock<input id="p_alert" type="number" min="0" value="'+(b.alert==null?3:b.alert)+'" inputmode="numeric"></label>'+
@@ -740,7 +741,7 @@ var saveProduct=guard(function(){
   var st=readSizes(),chosen=Object.keys(st).filter(function(k){return st[k].on});
   if(!chosen.length){toast("Cochez au moins une taille.");return}
   var alertV=parseInt($("#p_alert").value,10);if(isNaN(alertV))alertV=3;
-  var pc=$("#p_cat").value,shared={name:name,category:catOf(pc),mat:pc.indexOf("|")>=0?pc.split("|")[1]:"",color:$("#p_color").value.trim(),price:parseFloat($("#p_price").value)||0,alert:alertV};
+  var pc=$("#p_cat").value,shared={name:name,category:catOf(pc),femme:!!($("#p_femme")||{}).checked,mat:pc.indexOf("|")>=0?pc.split("|")[1]:"",color:$("#p_color").value.trim(),price:parseFloat($("#p_price").value)||0,alert:alertV};
   var ph=pendingPhoto||curGroup.photo;
   var bySize={};curGroup.items.forEach(function(p){var k=nSize(p.size);if(!bySize[k])bySize[k]=p});
   var chain=Promise.resolve();

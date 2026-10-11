@@ -116,7 +116,7 @@ function wooGroups(PDO $pdo): array {
         $p = json_decode((string)$r['data'], true); if (!is_array($p)) { continue; }
         $g = (string)($p['g'] ?? ($p['id'] ?? '')); if ($g === '') { continue; }
         $sz = preg_replace('/\s+/', '', (string)($p['size'] ?? ''));
-        if (!isset($m[$g])) { $m[$g] = ['g' => $g, 'name' => trim((string)($p['name'] ?? '')), 'color' => trim((string)($p['color'] ?? '')), 'price' => (float)($p['price'] ?? 0), 'cat' => trim((string)($p['category'] ?? '')), 'mat' => trim((string)($p['mat'] ?? '')), 'photo' => (string)($p['photo'] ?? ''), 'sizes' => []]; }
+        if (!isset($m[$g])) { $m[$g] = ['g' => $g, 'name' => trim((string)($p['name'] ?? '')), 'color' => trim((string)($p['color'] ?? '')), 'price' => (float)($p['price'] ?? 0), 'cat' => trim((string)($p['category'] ?? '')), 'mat' => trim((string)($p['mat'] ?? '')), 'femme' => !empty($p['femme']), 'photo' => (string)($p['photo'] ?? ''), 'sizes' => []]; }
         if (!isset($m[$g]['sizes'][$sz])) { $m[$g]['sizes'][$sz] = (int)($p['stock'] ?? 0); }
     }
     return array_values($m);
@@ -132,6 +132,15 @@ function wooAllCats(array $c): array {
     }
     return $all;
 }
+function wooCatIds(PDO $pdo, array $g, array $cats, array $trashed): array {
+    $ids = wooCatBase($pdo, $g, $cats, $trashed);
+    $fid = 0;
+    foreach ($cats as $k) { if (wooNorm($k['name']) === 'femme' || strpos(wooNorm($k['name']), 'bracelet femme') !== false || wooNorm($k['name']) === 'bracelet femme') { $fid = $k['id']; break; } }
+    if (!$fid) { foreach ($cats as $k) { if ($k['id'] === 87) { $fid = 87; } } }
+    if ($fid) { $ids = array_values(array_diff($ids, [$fid])); if (!empty($g['femme'])) { $ids[] = $fid; } }
+    return array_values(array_unique($ids));
+}
+
 function wooTrashed(array $c): array {
     $out = [];
     for ($p = 1; $p <= 5; $p++) {
@@ -141,7 +150,7 @@ function wooTrashed(array $c): array {
     }
     return $out;
 }
-function wooCatIds(PDO $pdo, array $g, array $cats, array $trashed): array {
+function wooCatBase(PDO $pdo, array $g, array $cats, array $trashed): array {
     $stored = setting($pdo, 'woocat:' . $g['g']);
     if ($stored !== null) { $j = json_decode($stored, true); if (is_array($j) && $j) { return array_map('intval', $j); } }
     $want = wooNorm($g['name'] . ' ' . $g['color']);
@@ -227,7 +236,7 @@ function wooUpdate(PDO $pdo, array $c, array $g, array $x, array $cats, array $t
     }
     return $n;
 }
-function wooSig(array $g): string { return md5(json_encode([$g['name'], $g['color'], $g['price'], $g['cat'], $g['mat'], $g['photo'], $g['sizes']])); }
+function wooSig(array $g): string { return md5(json_encode([$g['name'], $g['color'], $g['price'], $g['cat'], $g['mat'], $g['femme'], $g['photo'], $g['sizes']])); }
 
 function wooPrice(float $p): string { $p = (int)round($p); if ($p === 3300) { $p = 5000; } elseif ($p === 7500) { $p = 10000; } return (string)$p; }
 function wooPhoto(array $g): ?array {
