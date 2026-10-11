@@ -534,6 +534,142 @@ function buildInvoice(array $o, string $num, array $biz = []): string {
     return $out . "trailer\n<< /Size $mx /Root 1 0 R >>\nstartxref\n$xr\n%%EOF";
 }
 
+/* ---------- Catalogues générés selon le stock ---------- */
+function catPhotoJpeg(string $photo): ?array {
+    if (!function_exists('imagecreatefromstring')) { return null; }
+    $fs = photoFiles($photo); if (!$fs) { return null; }
+    foreach ([$fs[1], $fs[0]] as $f) {
+        if (!is_file($f)) { continue; }
+        $im = @imagecreatefromstring((string)file_get_contents($f)); if (!$im) { continue; }
+        $w = imagesx($im); $h = imagesy($im); $k = min(1, 420 / max($w, $h));
+        $nw = max(1, (int)round($w * $k)); $nh = max(1, (int)round($h * $k));
+        $d = imagecreatetruecolor($nw, $nh); imagefill($d, 0, 0, imagecolorallocate($d, 255, 255, 255));
+        imagecopyresampled($d, $im, 0, 0, 0, 0, $nw, $nh, $w, $h);
+        ob_start(); imagejpeg($d, null, 80); $bin = (string)ob_get_clean();
+        imagedestroy($im); imagedestroy($d);
+        return ['bin' => $bin, 'w' => $nw, 'h' => $nh];
+    }
+    return null;
+}
+function catStockModels(PDO $pdo, array $sizes, bool $big): array {
+    $by = [];
+    foreach (load($pdo, 'products') as $p) {
+        $cat = (string)($p['category'] ?? ''); $cat = strpos($cat, '|') !== false ? explode('|', $cat)[0] : $cat;
+        if ($cat !== 'Bracelet' && $cat !== 'Bracelet femme') { continue; }
+        $sz = preg_replace('/\s+/', '', (string)($p['size'] ?? ''));
+        if (!in_array($sz, $sizes, true) || (int)($p['stock'] ?? 0) <= 0) { continue; }
+        if (((float)($p['price'] ?? 0) >= 10000) !== $big) { continue; }
+        $g = (string)($p['g'] ?? $p['id']);
+        if (!isset($by[$g])) { $by[$g] = ['name' => (string)($p['name'] ?? ''), 'color' => (string)($p['color'] ?? ''), 'photo' => (string)($p['photo'] ?? ''), 'sizes' => []]; }
+        $by[$g]['sizes'][$sz] = 1;
+    }
+    $out = [];
+    foreach ($by as $m) { $m['sizes'] = array_map('strval', array_keys($m['sizes'])); sort($m['sizes'], SORT_NUMERIC); $out[] = $m; }
+    usort($out, function ($a, $b) { return strcasecmp($a['name'] . $a['color'], $b['name'] . $b['color']); });
+    return $out;
+}
+function buildCatalogue(array $models, string $sizesTxt, string $l1, string $l2, ?array $logo): string {
+    $W = 595; $H = 842; $org = '0.87 0.39 0.06'; $dark = '0.09 0.11 0.1';
+    $imgs = []; /* n° objet => données */
+    $pages = [];
+    $mk = function () use (&$pages, $H) {
+        $o = new stdClass(); $o->c = ''; $o->im = []; $pages[] = $o; return $o;
+    };
+    $T = function (stdClass $pg, float $x, float $y, string $t, float $sz = 10, bool $b = false, string $al = 'l', string $col = '0.1 0.13 0.11') use ($H) {
+        if ($al === 'r') { $x -= pdfW($t, $b, $sz); } elseif ($al === 'c') { $x -= pdfW($t, $b, $sz) / 2; }
+        $pg->c .= "BT /" . ($b ? 'F2' : 'F1') . " $sz Tf $col rg 1 0 0 1 " . round($x, 2) . ' ' . round($H - $y, 2) . ' Tm (' . pdfStr($t) . ") Tj ET\n";
+    };
+    $R = function (stdClass $pg, float $x, float $y, float $w, float $h, string $col) use ($H) { $pg->c .= "$col rg " . round($x, 2) . ' ' . round($H - $y - $h, 2) . " $w $h re f\n"; };
+    $I = function (stdClass $pg, string $name, array $im, float $x, float $y, float $bw, float $bh) use ($H) {
+        $k = min($bw / $im['w'], $bh / $im['h']); $dw = round($im['w'] * $k, 2); $dh = round($im['h'] * $k, 2);
+        $pg->c .= "q $dw 0 0 $dh " . round($x + ($bw - $dw) / 2, 2) . ' ' . round($H - $y - $bh + ($bh - $dh) / 2, 2) . " cm /$name Do Q\n"; $pg->im[$name] = 1;
+    };
+    /* Couverture */
+    $p = $mk(); $R($p, 0, 0, $W, $H, $dark);
+    if ($logo) { $R($p, 48, 56, 84, 84, '1 1 1'); $I($p, 'Lg', $logo, 54, 62, 72, 72); }
+    $T($p, 48, 330, 'Watch Côte d\'Ivoire', 14, true, 'l', $org);
+    $T($p, 48, 392, 'Bracelets', 52, true, 'l', '1 1 1');
+    $T($p, 48, 428, 'Apple Watch ' . $sizesTxt . ' mm', 22, false, 'l', '1 1 1');
+    $R($p, 0, 500, $W, 96, $org);
+    $T($p, 48, 540, $l1, 22, true, 'l', '1 1 1'); $T($p, 48, 570, $l2, 16, false, 'l', '1 1 1');
+    $T($p, 48, 700, count($models) . ' modèle' . (count($models) > 1 ? 's' : '') . ' disponible' . (count($models) > 1 ? 's' : '') . ' · mis à jour le ' . date('d/m/Y'), 11, false, 'l', '0.75 0.78 0.76');
+    $T($p, 48, 760, 'WhatsApp 01 02 99 09 66', 14, true, 'l', '1 1 1');
+    $T($p, 48, 782, 'www.watchcotedivoire.com', 11, false, 'l', '0.75 0.78 0.76');
+    /* Pages modèles : 4 par page */
+    $n = 0; $cw = 247; $ch = 339; $pg = null; $photoN = 0; $objImgs = [];
+    foreach ($models as $m) {
+        if ($n % 4 === 0) {
+            $pg = $mk();
+            $R($pg, 0, 0, $W, 64, $org);
+            $T($pg, 40, 40, 'Watch Côte d\'Ivoire', 18, true, 'l', '1 1 1'); $T($pg, 555, 40, 'Apple Watch ' . $sizesTxt . ' mm', 11, false, 'r', '1 1 1');
+            $R($pg, 0, 792, $W, 50, $dark);
+            $T($pg, 40, 813, $l1 . '  |  ' . $l2, 10, true, 'l', '1 1 1'); $T($pg, 555, 813, 'WhatsApp 01 02 99 09 66', 10, true, 'r', $org);
+            $T($pg, 40, 830, 'www.watchcotedivoire.com', 8, false, 'l', '0.75 0.78 0.76');
+        }
+        $i = $n % 4; $x = 40 + ($i % 2) * ($cw + 1); $y = 80 + intdiv($i, 2) * ($ch + 14);
+        $R($pg, $x, $y, $cw, $ch, '0.95 0.96 0.95');
+        $R($pg, $x, $y, $cw, 247, '1 1 1');
+        $ph = $m['photo'] !== '' ? catPhotoJpeg($m['photo']) : null;
+        if ($ph) { $nm = 'P' . (++$photoN); $objImgs[$nm] = $ph; $I($pg, $nm, $ph, $x + 4, $y + 4, $cw - 8, 239); }
+        else { $T($pg, $x + $cw / 2, $y + 126, 'Photo à venir', 10, false, 'c', '0.6 0.63 0.61'); }
+        $R($pg, $x, $y, 30, 24, $org); $T($pg, $x + 15, $y + 17, (string)($n + 1), 11, true, 'c', '1 1 1');
+        $T($pg, $x + 12, $y + 270, pdfFit($m['name'], true, 12, $cw - 24), 12, true);
+        if ($m['color'] !== '') { $T($pg, $x + 12, $y + 288, pdfFit($m['color'], false, 10, $cw - 24), 10, false, 'l', '0.4 0.45 0.42'); }
+        $T($pg, $x + 12, $y + 312, pdfFit('Tailles : ' . implode(' · ', $m['sizes']) . ' mm', false, 9, $cw - 24), 9, false, 'l', $org);
+        $n++;
+    }
+    /* Assemblage */
+    $objs = [1 => '', 2 => '', 3 => '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>', 4 => '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>'];
+    $num = 5; $xo = [];
+    $addImg = function (array $im) use (&$objs, &$num): int {
+        $k = $num++;
+        $objs[$k] = "<< /Type /XObject /Subtype /Image /Width {$im['w']} /Height {$im['h']} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length " . strlen($im['bin']) . " >>\nstream\n" . $im['bin'] . "\nendstream";
+        return $k;
+    };
+    if ($logo) { $xo['Lg'] = $addImg($logo); }
+    foreach ($objImgs as $nm => $im) { $xo[$nm] = $addImg($im); }
+    $xs = ''; foreach ($xo as $nm => $k) { $xs .= "/$nm $k 0 R "; }
+    $kids = [];
+    foreach ($pages as $pg) {
+        $cn = $num++; $pn = $num++;
+        $objs[$cn] = "<< /Length " . strlen($pg->c) . " >>\nstream\n" . $pg->c . "endstream";
+        $objs[$pn] = "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 $W $H] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> /XObject << $xs>> >> /Contents $cn 0 R >>";
+        $kids[] = "$pn 0 R";
+    }
+    $objs[1] = '<< /Type /Catalog /Pages 2 0 R >>'; $objs[2] = '<< /Type /Pages /Kids [' . implode(' ', $kids) . '] /Count ' . count($kids) . ' >>';
+    ksort($objs);
+    $out = "%PDF-1.4\n"; $off = [];
+    foreach ($objs as $k => $v) { $off[$k] = strlen($out); $out .= "$k 0 obj\n$v\nendobj\n"; }
+    $xr = strlen($out); $mx = max(array_keys($objs)) + 1;
+    $out .= "xref\n0 $mx\n0000000000 65535 f \n";
+    for ($k = 1; $k < $mx; $k++) { $out .= sprintf("%010d 00000 n \n", $off[$k]); }
+    return $out . "trailer\n<< /Size $mx /Root 1 0 R >>\nstartxref\n$xr\n%%EOF";
+}
+function catAuto(PDO $pdo, string $dir): void {
+    if (!is_dir($dir)) { @mkdir($dir, 0755, true); }
+    @ini_set('memory_limit', '512M'); @set_time_limit(120);
+    $defs = [
+        ['stock-38-40-41-42-5k.pdf', ['38','40','41','42'], false, '38/40/41/42', '38/40/41/42 MM · 5 000 F (selon le stock)', '5 000 F l\'unité', '3 bracelets pour 10 000 FCFA', 1],
+        ['stock-38-40-41-42-10k.pdf', ['38','40','41','42'], true, '38/40/41/42', '38/40/41/42 MM · 10 000 F (selon le stock)', '10 000 FCFA l\'unité', '2 bracelets pour 15 000 FCFA', 2],
+        ['stock-44-45-46-49-5k.pdf', ['44','45','46','49'], false, '44/45/46/49', '44/45/46/49 MM · 5 000 F (selon le stock)', '5 000 F l\'unité', '3 bracelets pour 10 000 FCFA', 3],
+        ['stock-44-45-46-49-10k.pdf', ['44','45','46','49'], true, '44/45/46/49', '44/45/46/49 MM · 10 000 F (selon le stock)', '10 000 FCFA l\'unité', '2 bracelets pour 15 000 FCFA', 4],
+    ];
+    $logo = null;
+    foreach ($defs as $d) {
+        $models = catStockModels($pdo, $d[1], $d[2]);
+        $file = $dir . '/' . $d[0];
+        if (!$models) { if (is_file($file)) { @unlink($file); } continue; }
+        $sig = md5(json_encode($models) . '|' . $d[5] . $d[6] . '|' . (is_file(__DIR__ . '/uploads/logo.jpg') ? filemtime(__DIR__ . '/uploads/logo.jpg') : 0));
+        foreach ($models as $m) { foreach (photoFiles($m['photo']) as $pf) { if (is_file($pf)) { $sig = md5($sig . filemtime($pf)); } } }
+        if (is_file($file) && setting($pdo, 'catsig:' . $d[0]) === $sig) { continue; }
+        if ($logo === null) { $logo = logoJpeg() ?: []; }
+        $pdf = buildCatalogue($models, $d[3], $d[5], $d[6], $logo ?: null);
+        if (@file_put_contents($file, $pdf) !== false) {
+            setSetting($pdo, 'catsig:' . $d[0], $sig); setSetting($pdo, 'catlabel:' . $d[0], $d[4]); setSetting($pdo, 'catord:' . $d[0], (string)$d[7]);
+        }
+    }
+}
+
 switch ($r) {
     case 'state':
         $bkTo = (string)(setting($pdo, 'bk_email') ?? '');
@@ -715,6 +851,7 @@ switch ($r) {
 
     case 'catalogues': {
         $dir = $upDir . '/catalogues';
+        try { catAuto($pdo, $dir); } catch (Throwable $e) { }
         $list = catList($pdo, $dir);
         $seed = 0;
         if (!$list && setting($pdo, 'cat_seeded') === null) { $seed = 1; }
