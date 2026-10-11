@@ -187,7 +187,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=64;
+var PAGE_V=65;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -480,7 +480,9 @@ function wooSheet(){
       '<label class="f">Clé secrète (cs_…)<input id="w_sec" type="password" autocomplete="off" placeholder="'+(j.hasKeys?'Déjà enregistrée — laisser vide pour garder':'cs_…')+'"></label>'+
       '<div class="s" style="color:var(--muted)">'+(j.last?'Dernière synchronisation : '+esc(j.last):'Aucune synchronisation pour le moment.')+'</div>'+
       '<div class="row"><button class="btn primary grow" data-act="woosave" type="button">Enregistrer</button><button class="btn grow" data-act="wooplan" type="button">Voir les correspondances</button></div>'+
-      '<div class="card" style="display:flex;flex-direction:column;gap:8px"><h3>Remplacer le catalogue du site</h3><p class="s" style="color:var(--muted)">Les produits actuels du site vont à la corbeille WooCommerce (récupérables), puis tous les produits de l\'outil sont créés sur le site avec leurs tailles, prix, photos et stock.</p><button class="btn danger" data-act="woorep" data-confirm="Les produits actuels du site iront à la corbeille et seront remplacés par ceux de l\'outil. Continuer ?" type="button">Remplacer par le catalogue de l\'outil</button></div>'+
+      '<div class="card" style="display:flex;flex-direction:column;gap:8px"><h3>Remplacer le catalogue du site</h3><p class="s" style="color:var(--muted)">Les produits actuels du site vont à la corbeille WooCommerce (récupérables), puis tous les produits de l\'outil sont créés sur le site avec leurs tailles, prix, photos et stock.</p><button class="btn" data-act="woocats" type="button">Remettre les produits dans leurs catégories</button>'+
+      '<div class="s" style="color:var(--muted)">Utilise l\'arborescence existante du site (par taille et par matière).</div>'+
+      '<button class="btn danger" data-act="woorep" data-confirm="Les produits actuels du site iront à la corbeille et seront remplacés par ceux de l\'outil. Continuer ?" type="button">Remplacer par le catalogue de l\'outil</button></div>'+
       '<div class="row"><button class="btn grow" data-act="close" type="button">Fermer</button></div>');
   }).catch(function(e){openSheet('<h2>Lien avec le site</h2><div class="empty">'+esc(e.message)+'</div><div class="row"><button class="btn grow" data-act="close">Fermer</button></div>')});
 }
@@ -531,6 +533,13 @@ var pricesGo=guard(function(){
   var chain=Promise.resolve();
   list.forEach(function(p){var d=Object.assign({},p);delete d.id;d.price=map[p.price];chain=chain.then(function(){return api("save",{coll:"products",id:p.id,data:d})})});
   return chain.then(refresh).then(function(){closeSheet();toast(list.length+" article"+(list.length>1?"s":"")+" mis à jour.")});
+});
+
+var wooCats=guard(function(){
+  openSheet('<h2>Catégories</h2><div class="empty">Remise en place des catégories…</div>');
+  return api("woo_fixcats",{}).then(function(j){
+    openSheet('<h2>Catégories</h2><p><b>'+j.updated+'</b> produit'+(j.updated>1?'s':'')+' remis dans '+(j.updated>1?'leurs':'sa')+' catégorie'+(j.updated>1?'s':'')+'.</p>'+(j.notes&&j.notes.length?'<div class="card"><div class="s" style="color:var(--muted)">À vérifier :</div>'+j.notes.map(function(n){return '<div class="s">'+esc(n)+'</div>'}).join("")+'</div>':'')+'<div class="row"><button class="btn grow" data-act="close">Fermer</button></div>');
+  });
 });
 
 function invSheet(){
@@ -773,6 +782,7 @@ document.addEventListener("click",function(e){
     case "prices":pricesSheet();break;
     case "pricesgo":pricesGo();break;
     case "woorep":wooRep();break;
+    case "woocats":wooCats();break;
     case "bksave":api("bk_set",{email:$("#bk_mail").value.trim()}).then(function(){toast($("#bk_mail").value.trim()?"Adresse enregistrée.":"Envoi désactivé.")}).catch(function(e){toast(e.message)});break;
     case "bktest":b.disabled=true;b.textContent="Envoi…";api("bk_set",{email:$("#bk_mail").value.trim()}).then(function(){return api("bk_test",{})}).then(function(){toast("E-mail envoyé. Vérifiez votre boîte (et les courriers indésirables).");bkSheet()}).catch(function(e){b.disabled=false;b.textContent="Envoyer un test";toast(e.message)});break;
     case "bkcopy":{var t=$("#bk_cron");t.select();try{document.execCommand("copy");toast("Commande copiée.")}catch(x){toast("Sélectionnez et copiez le texte.")}break}

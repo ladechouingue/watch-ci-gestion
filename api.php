@@ -122,6 +122,62 @@ function wooGroups(PDO $pdo): array {
     return array_values($m);
 }
 
+/* Catégories WooCommerce : on retrouve l'arborescence existante du site */
+function wooAllCats(array $c): array {
+    $all = [];
+    for ($p = 1; $p <= 5; $p++) {
+        $page = wooReq($c, 'GET', 'products/categories?per_page=100&_fields=id,name,parent&page=' . $p);
+        foreach ($page as $x) { $all[] = ['id' => (int)$x['id'], 'name' => html_entity_decode((string)$x['name']), 'parent' => (int)$x['parent']]; }
+        if (count($page) < 100) { break; }
+    }
+    return $all;
+}
+function wooTrashed(array $c): array {
+    $out = [];
+    for ($p = 1; $p <= 5; $p++) {
+        $page = wooReq($c, 'GET', 'products?per_page=100&status=trash&_fields=id,name,categories&page=' . $p);
+        foreach ($page as $x) { $out[] = ['name' => html_entity_decode((string)$x['name']), 'cats' => array_map(function ($k) { return (int)$k['id']; }, (array)($x['categories'] ?? []))]; }
+        if (count($page) < 100) { break; }
+    }
+    return $out;
+}
+function wooCatIds(PDO $pdo, array $g, array $cats, array $trashed): array {
+    $stored = setting($pdo, 'woocat:' . $g['g']);
+    if ($stored !== null) { $j = json_decode($stored, true); if (is_array($j) && $j) { return array_map('intval', $j); } }
+    $want = wooNorm($g['name'] . ' ' . $g['color']);
+    /* 1) mêmes catégories que l'ancien produit du site (corbeille), sauf catégories créées par erreur */
+    foreach ($trashed as $t) { if (wooNorm($t['name']) === $want && $t['cats']) { return $t['cats']; } }
+    foreach ($trashed as $t) {
+        $n = wooNorm($t['name']);
+        if ($t['cats'] && $n !== '' && $want !== '' && (strpos($n, $want) !== false || strpos($want, $n) !== false)) { return $t['cats']; }
+    }
+    /* 2) à défaut : règles (taille + matière, ou accessoire) */
+    $byName = function ($needle, $parent = null) use ($cats) {
+        foreach ($cats as $k) {
+            if ($parent !== null && $k['parent'] !== $parent) { continue; }
+            if (strpos(wooNorm($k['name']), $needle) !== false) { return $k['id']; }
+        }
+        return 0;
+    };
+    $nm = wooNorm($g['name'] . ' ' . $g['color']); $ids = [];
+    $isBr = mb_strtolower($g['cat']) === 'bracelet' || $g['cat'] === '';
+    if ($isBr && strpos($nm, 'chargeur') === false) {
+        $mat = '';
+        foreach (['cuir', 'metal', 'nylon', 'silicone'] as $m) { if (strpos($nm, $m) !== false) { $mat = $m; break; } }
+        $small = false; $large = false;
+        foreach (array_keys($g['sizes']) as $sz) { $n = wooNums((string)$sz); if (in_array('38', $n, true)) { $small = true; } else { $large = true; } }
+        foreach ([[$small, '38'], [$large, '44']] as $pair) {
+            if (!$pair[0]) { continue; }
+            $par = $byName($pair[1] === '38' ? '38 40 41 42' : '42 44 45 46 49');
+            if ($par) { $ids[] = $par; if ($mat !== '') { $ch = $byName($mat, $par); if ($ch) { $ids[] = $ch; } } }
+        }
+    } else {
+        $t = strpos($nm, 'chargeur') !== false ? 'chargeur' : wooNorm($g['cat']);
+        $id = $byName($t); if ($id) { $ids[] = $id; }
+    }
+    return array_values(array_unique($ids));
+}
+
 function httpGet(string $url, array $headers = [], int $timeout = 30): array {
     $headers[] = 'User-Agent: watch-ci-gestion';
     if (function_exists('curl_init')) {
@@ -823,12 +879,8 @@ switch ($r) {
         $name = $g['name'];
         if ($g['color'] !== '' && stripos(wooNorm($name), wooNorm($g['color'])) === false) { $name .= ' ' . $g['color']; }
         $data = ['name' => $name, 'status' => 'publish'];
-        if ($g['cat'] !== '') {
-            $cid = 0;
-            foreach (wooReq($c, 'GET', 'products/categories?per_page=100&_fields=id,name') as $x) { if (mb_strtolower(html_entity_decode((string)$x['name'])) === mb_strtolower($g['cat'])) { $cid = (int)$x['id']; break; } }
-            if (!$cid) { $n = wooReq($c, 'POST', 'products/categories', ['name' => $g['cat']]); $cid = (int)($n['id'] ?? 0); }
-            if ($cid) { $data['categories'] = [['id' => $cid]]; }
-        }
+        $cl = wooCatIds($pdo, $g, wooAllCats($c), $step === 1 ? wooTrashed($c) : []);
+        if ($cl) { $data['categories'] = array_map(function ($i) { return ['id' => $i]; }, $cl); }
         if (preg_match('#^uploads/[a-f0-9]{24}\.jpg$#', $g['photo'])) { $data['images'] = [['src' => $proto . '://' . ($_SERVER['HTTP_HOST'] ?? '') . $dir . '/' . $g['photo']]]; }
         $price = (string)(int)round($g['price']);
         $sizes = $g['sizes']; $keys = array_keys($sizes);
@@ -847,6 +899,24 @@ switch ($r) {
         if (!empty($p['id'])) { setSetting($pdo, 'woomap:' . $g['g'], (string)(int)$p['id']); }
         setSetting($pdo, 'woo_last', date('Y-m-d H:i'));
         out(['ok' => true, 'name' => $name]);
+    }
+
+    case 'woo_fixcats': {
+        if (!$isPost) { fail('POST requis.', 405); }
+        session_write_close();
+        @set_time_limit(180);
+        $c = wooCfg($pdo); $cats = wooAllCats($c); $trashed = wooTrashed($c);
+        $done = 0; $notes = [];
+        foreach (wooGroups($pdo) as $g) {
+            $wid = (int)(setting($pdo, 'woomap:' . $g['g']) ?? 0);
+            if (!$wid) { continue; }
+            $ids = wooCatIds($pdo, $g, $cats, $trashed);
+            if (!$ids) { $notes[] = $g['name'] . ' : aucune catégorie trouvée'; continue; }
+            setSetting($pdo, 'woocat:' . $g['g'], json_encode($ids));
+            wooReq($c, 'PUT', 'products/' . $wid, ['categories' => array_map(function ($i) { return ['id' => $i]; }, $ids)]);
+            $done++;
+        }
+        out(['ok' => true, 'updated' => $done, 'notes' => $notes]);
     }
 
     case 'woo_sync': {
