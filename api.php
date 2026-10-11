@@ -952,6 +952,7 @@ switch ($r) {
         session_write_close();
         $c = wooCfg($pdo);
         if ($c['url'] === '' || $c['key'] === '' || $c['secret'] === '') { out(['skipped' => true]); }
+        if (!empty(body()['force'])) { $pdo->exec("DELETE FROM settings WHERE k LIKE 'woosig:%'"); setSetting($pdo, 'woo_busy', '0'); }
         $changed = [];
         foreach (wooGroups($pdo) as $g) { if (setting($pdo, 'woosig:' . $g['g']) !== wooSig($g)) { $changed[] = $g; } }
         if (!$changed) { out(['changed' => 0]); }
