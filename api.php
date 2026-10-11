@@ -206,6 +206,28 @@ function wooCreate(PDO $pdo, array $c, array $g, array $cats, array $trashed): s
     return $name;
 }
 
+/* Met à jour un produit du site (stock, prix, catégories) à partir d'un produit de l'outil */
+function wooUpdate(PDO $pdo, array $c, array $g, array $x, array $cats, array $trashed, array &$notes): int {
+    $n = 0; $wid = (int)$x['id']; $price = (string)(int)round($g['price']);
+    $ids = wooCatIds($pdo, $g, $cats, $trashed);
+    $catPart = $ids ? ['categories' => array_map(function ($i) { return ['id' => $i]; }, $ids)] : [];
+    if ($x['type'] === 'variable' && $x['vars']) {
+        foreach ($x['vars'] as $v) {
+            $vn = wooNums($v['label']); $stock = null;
+            foreach ($g['sizes'] as $sz => $st) { $tn = wooNums((string)$sz); if ($vn && !array_diff($vn, $tn)) { $stock = $st; break; } }
+            if ($stock === null) { $notes[] = $g['name'] . ' · « ' . $v['label'] . ' » : taille non trouvée dans l\'outil'; continue; }
+            wooReq($c, 'PUT', 'products/' . $wid . '/variations/' . $v['id'], ['manage_stock' => true, 'stock_quantity' => max(0, (int)$stock), 'regular_price' => $price]);
+            $n++;
+        }
+        if ($catPart) { wooReq($c, 'PUT', 'products/' . $wid, $catPart); }
+    } else {
+        wooReq($c, 'PUT', 'products/' . $wid, ['manage_stock' => true, 'stock_quantity' => max(0, (int)array_sum($g['sizes'])), 'regular_price' => $price] + $catPart);
+        $n++;
+    }
+    return $n;
+}
+function wooSig(array $g): string { return md5(json_encode([$g['name'], $g['color'], $g['price'], $g['cat'], $g['mat'], $g['photo'], $g['sizes']])); }
+
 function httpGet(string $url, array $headers = [], int $timeout = 30): array {
     $headers[] = 'User-Agent: watch-ci-gestion';
     if (function_exists('curl_init')) {
@@ -923,6 +945,43 @@ switch ($r) {
             $done++;
         }
         out(['ok' => true, 'updated' => $done, 'created' => $created, 'notes' => $notes]);
+    }
+
+    case 'woo_push': {
+        if (!$isPost) { fail('POST requis.', 405); }
+        session_write_close();
+        $c = wooCfg($pdo);
+        if ($c['url'] === '' || $c['key'] === '' || $c['secret'] === '') { out(['skipped' => true]); }
+        $changed = [];
+        foreach (wooGroups($pdo) as $g) { if (setting($pdo, 'woosig:' . $g['g']) !== wooSig($g)) { $changed[] = $g; } }
+        if (!$changed) { out(['changed' => 0]); }
+        $busy = (int)(setting($pdo, 'woo_busy') ?? 0);
+        if ($busy > time() - 150) { out(['busy' => true]); }
+        setSetting($pdo, 'woo_busy', (string)time());
+        @set_time_limit(170);
+        $mapped = [];
+        foreach ($changed as $g) { $m = setting($pdo, 'woomap:' . $g['g']); if ($m !== null) { $mapped[] = (int)$m; } }
+        $site = wooProducts($c, $mapped);
+        $cats = wooAllCats($c); $trashed = wooTrashed($c);
+        $created = 0; $updated = 0; $notes = [];
+        foreach ($changed as $g) {
+            $wid = (int)(setting($pdo, 'woomap:' . $g['g']) ?? 0); $x = null;
+            foreach ($site as $s2) { if ($s2['id'] === $wid) { $x = $s2; break; } }
+            if (!$x) {
+                $want = wooNorm($g['name'] . ' ' . $g['color']);
+                foreach ($site as $s2) { if (wooNorm($s2['name']) === $want) { $x = $s2; break; } }
+            }
+            if ($x && $x['type'] === 'variable' && !$x['vars']) { $r = wooProducts($c, [$x['id']]); foreach ($r as $q) { if ($q['id'] === $x['id']) { $x = $q; } } }
+            if ($x) {
+                setSetting($pdo, 'woomap:' . $g['g'], (string)$x['id']);
+                $updated += wooUpdate($pdo, $c, $g, $x, $cats, $trashed, $notes);
+            } else {
+                wooCreate($pdo, $c, $g, $cats, $trashed); $created++;
+            }
+            setSetting($pdo, 'woosig:' . $g['g'], wooSig($g));
+        }
+        setSetting($pdo, 'woo_busy', '0'); setSetting($pdo, 'woo_last', date('Y-m-d H:i'));
+        out(['changed' => count($changed), 'created' => $created, 'updated' => $updated, 'notes' => $notes]);
     }
 
     case 'woo_sync': {

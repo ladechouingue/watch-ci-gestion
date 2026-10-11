@@ -187,7 +187,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=68;
+var PAGE_V=69;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -206,7 +206,9 @@ function api(route,body,form){
     if(!r.ok)throw new Error(j.error||"Erreur "+r.status);
     return j})});
 }
-function refresh(){return api("state").then(function(st){products=st.products||[];orders=st.orders||[];expenses=(st.expenses||[]).map(function(e){if(e.category==="Site web")e.category="Hébergement web";if(e.category==="Publicité")e.category=META;return e});render()})}
+function refresh(){return api("state").then(function(st){products=st.products||[];orders=st.orders||[];expenses=(st.expenses||[]).map(function(e){if(e.category==="Site web")e.category="Hébergement web";if(e.category==="Publicité")e.category=META;return e});render();wooAutoSoon()})}
+var wooT=null,wooRun=false;
+function wooAutoSoon(){clearTimeout(wooT);wooT=setTimeout(function(){if(wooRun)return;wooRun=true;api("woo_push",{}).then(function(j){wooRun=false;if(j&&(j.created||j.updated))toast("Site mis à jour"+(j.created?" · "+j.created+" produit"+(j.created>1?"s":"")+" ajouté"+(j.created>1?"s":""):""))}).catch(function(){wooRun=false})},4000)}
 function put(coll,id,data){return api("save",{coll:coll,id:id,data:data}).then(refresh)}
 function patch(coll,id,obj){var list=coll==="orders"?orders:products;var cur=list.find(function(x){return x.id===id});var d=Object.assign({},cur,obj);delete d.id;return put(coll,id,d)}
 function del(coll,id){return api("delete",{coll:coll,id:id}).then(refresh)}
