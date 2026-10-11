@@ -852,6 +852,7 @@ switch ($r) {
     case 'catalogues': {
         $dir = $upDir . '/catalogues';
         try { catAuto($pdo, $dir); } catch (Throwable $e) { }
+        foreach (glob($dir . '/stock-*.pdf') ?: [] as $sf) { @unlink($sf); }
         $list = catList($pdo, $dir);
         $seed = 0;
         if (!$list && setting($pdo, 'cat_seeded') === null) { $seed = 1; }
