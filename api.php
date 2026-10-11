@@ -68,7 +68,7 @@ function wooReq(array $c, string $method, string $path, ?array $data = null): ar
     $url = $c['url'] . '/wp-json/wc/v3/' . $path . $sep . 'consumer_key=' . rawurlencode($c['key']) . '&consumer_secret=' . rawurlencode($c['secret']);
     $ch = curl_init($url);
     $h = ['User-Agent: watch-ci-gestion', 'Accept: application/json'];
-    $o = [CURLOPT_RETURNTRANSFER => true, CURLOPT_FOLLOWLOCATION => true, CURLOPT_TIMEOUT => 40, CURLOPT_CUSTOMREQUEST => $method];
+    $o = [CURLOPT_RETURNTRANSFER => true, CURLOPT_FOLLOWLOCATION => true, CURLOPT_TIMEOUT => 25, CURLOPT_CUSTOMREQUEST => $method];
     if ($data !== null) { $o[CURLOPT_POSTFIELDS] = json_encode($data); $h[] = 'Content-Type: application/json'; }
     $o[CURLOPT_HTTPHEADER] = $h; curl_setopt_array($ch, $o);
     $body = curl_exec($ch); $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE); $err = curl_error($ch); curl_close($ch);
@@ -89,17 +89,17 @@ function wooNorm(string $s): string {
 }
 function wooNums(string $s): array { preg_match_all('/\d+/', $s, $m); return array_values(array_unique($m[0])); }
 /* Produits du site (avec variations) */
-function wooProducts(array $c): array {
+function wooProducts(array $c, array $withVars = []): array {
     $all = [];
     for ($p = 1; $p <= 10; $p++) {
-        $page = wooReq($c, 'GET', 'products?per_page=100&status=publish&page=' . $p);
+        $page = wooReq($c, 'GET', 'products?per_page=100&status=publish&_fields=id,name,type,stock_quantity,variations&page=' . $p);
         foreach ($page as $x) { $all[] = $x; }
         if (count($page) < 100) { break; }
     }
     $res = [];
     foreach ($all as $x) {
-        $e = ['id' => (int)$x['id'], 'name' => html_entity_decode((string)($x['name'] ?? '')), 'type' => (string)($x['type'] ?? 'simple'), 'stock' => $x['stock_quantity'] ?? null, 'vars' => []];
-        if ($e['type'] === 'variable') {
+        $e = ['id' => (int)$x['id'], 'name' => html_entity_decode((string)($x['name'] ?? '')), 'type' => (string)($x['type'] ?? 'simple'), 'stock' => $x['stock_quantity'] ?? null, 'nv' => count((array)($x['variations'] ?? [])), 'vars' => []];
+        if ($e['type'] === 'variable' && in_array($e['id'], $withVars, true)) {
             foreach (wooReq($c, 'GET', 'products/' . $e['id'] . '/variations?per_page=100') as $v) {
                 $lab = [];
                 foreach (($v['attributes'] ?? []) as $a) { $lab[] = (string)($a['option'] ?? ''); }
@@ -784,7 +784,7 @@ switch ($r) {
             }
             $rows[] = ['g' => $gid, 'name' => trim($g['name'] . ($g['color'] !== '' ? ' · ' . $g['color'] : '')), 'sizes' => $g['sizes'], 'match' => $match];
         }
-        $list = array_map(function ($x) { return ['id' => $x['id'], 'name' => $x['name'], 'type' => $x['type'], 'nv' => count($x['vars'])]; }, $site);
+        $list = array_map(function ($x) { return ['id' => $x['id'], 'name' => $x['name'], 'type' => $x['type'], 'nv' => $x['nv']]; }, $site);
         out(['rows' => $rows, 'site' => $list]);
     }
 
@@ -793,7 +793,7 @@ switch ($r) {
         @set_time_limit(180);
         $c = wooCfg($pdo);
         $maps = (array)(body()['map'] ?? []);
-        $site = []; foreach (wooProducts($c) as $x) { $site[$x['id']] = $x; }
+        $site = []; foreach (wooProducts($c, array_map('intval', array_values((array)(body()['map'] ?? [])))) as $x) { $site[$x['id']] = $x; }
         $groups = []; foreach (wooGroups($pdo) as $g) { $groups[$g['g']] = $g; }
         $done = 0; $notes = [];
         foreach ($maps as $gid => $wid) {
