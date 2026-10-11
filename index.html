@@ -187,7 +187,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=57;
+var PAGE_V=58;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -463,11 +463,43 @@ function settingsSheet(){
     '<a class="setrow" href="api.php?r=export"><span>Télécharger une sauvegarde</span>'+chev+'</a>'+
     '<button class="setrow" data-act="bk" type="button"><span>Sauvegarde par e-mail et restauration</span>'+chev+'</button>'+
     '<button class="setrow" data-act="inv" type="button"><span>Reçu (logo, téléphone, adresse)</span>'+chev+'</button>'+
+    '<button class="setrow" data-act="woo" type="button"><span>Lien avec le site (WooCommerce)</span>'+chev+'</button>'+
     '<button class="setrow" data-act="chkupd" type="button"><span>Vérifier les mises à jour</span>'+chev+'</button>'+
     '<button class="setrow" data-act="rollback" data-confirm="Revenir à la version précédente ?" type="button"><span>Version précédente</span>'+chev+'</button>'+
     '</div><div class="s" style="color:var(--muted);text-align:center">Version '+esc(appVersion||"?")+'</div>'+
     '<div class="row"><button class="btn danger grow" data-act="logout" type="button">Quitter</button><button class="btn grow" data-act="close" type="button">Fermer</button></div>');
 }
+
+function wooSheet(){
+  openSheet('<h2>Lien avec le site</h2><div class="empty">Chargement…</div>');
+  api("woo_get").then(function(j){
+    openSheet('<h2>Lien avec le site</h2><p class="s" style="color:var(--muted)">L\'outil envoie le stock de chaque produit à votre site WooCommerce. Sur le site : WooCommerce › Réglages › Avancé › API REST › Ajouter une clé (droits « Lecture/Écriture »).</p>'+
+      '<label class="f">Adresse du site<input id="w_url" type="url" inputmode="url" placeholder="https://www.watchcotedivoire.com" value="'+esc(j.url)+'"></label>'+
+      '<label class="f">Clé client (ck_…)<input id="w_key" type="text" autocomplete="off" placeholder="'+(j.hasKeys?'Déjà enregistrée — laisser vide pour garder':'ck_…')+'"></label>'+
+      '<label class="f">Clé secrète (cs_…)<input id="w_sec" type="password" autocomplete="off" placeholder="'+(j.hasKeys?'Déjà enregistrée — laisser vide pour garder':'cs_…')+'"></label>'+
+      '<div class="s" style="color:var(--muted)">'+(j.last?'Dernière synchronisation : '+esc(j.last):'Aucune synchronisation pour le moment.')+'</div>'+
+      '<div class="row"><button class="btn primary grow" data-act="woosave" type="button">Enregistrer</button><button class="btn grow" data-act="wooplan" type="button">Voir les correspondances</button></div>'+
+      '<div class="row"><button class="btn grow" data-act="close" type="button">Fermer</button></div>');
+  }).catch(function(e){openSheet('<h2>Lien avec le site</h2><div class="empty">'+esc(e.message)+'</div><div class="row"><button class="btn grow" data-act="close">Fermer</button></div>')});
+}
+var wooSave=guard(function(){return api("woo_set",{url:$("#w_url").value.trim(),key:$("#w_key").value.trim(),secret:$("#w_sec").value.trim()}).then(function(){toast("Enregistré.")})});
+var wooPlanData=null;
+function wooPlan(){
+  openSheet('<h2>Correspondances</h2><div class="empty">Lecture du site…</div>');
+  api("woo_plan").then(function(j){
+    wooPlanData=j;
+    var opts=function(sel){return '<option value="0">— Ne pas lier —</option>'+j.site.map(function(x){return '<option value="'+x.id+'"'+(x.id===sel?' selected':'')+'>'+esc(x.name)+(x.nv?' ('+x.nv+' variations)':'')+'</option>'}).join("")};
+    openSheet('<h2>Correspondances</h2><p class="s" style="color:var(--muted)">Pour chaque produit de l\'outil, vérifiez le produit du site. Le stock de l\'outil est ensuite envoyé au site.</p>'+
+      '<div class="list">'+j.rows.map(function(r,i){return '<div class="card" style="padding:12px"><div class="t">'+esc(r.name)+'</div><div class="s" style="color:var(--muted);margin-bottom:6px">'+Object.keys(r.sizes).map(function(k){return esc(k||"Taille unique")+' : '+r.sizes[k]}).join(' · ')+'</div><select class="woosel" data-g="'+r.g+'">'+opts(r.match)+'</select></div>'}).join("")+'</div>'+
+      '<div class="row"><button class="btn grow" data-act="woo" type="button">Retour</button><button class="btn primary grow" data-act="woosync" type="button">Envoyer le stock au site</button></div>');
+  }).catch(function(e){openSheet('<h2>Correspondances</h2><div class="empty">'+esc(e.message)+'</div><div class="row"><button class="btn grow" data-act="woo">Retour</button></div>')});
+}
+var wooSync=guard(function(){
+  var map={};document.querySelectorAll(".woosel").forEach(function(s){map[s.dataset.g]=parseInt(s.value,10)||0});
+  return api("woo_sync",{map:map}).then(function(j){
+    openSheet('<h2>Synchronisation</h2><p><b>'+j.updated+'</b> mise'+(j.updated>1?'s':'')+' à jour sur le site.</p>'+(j.notes&&j.notes.length?'<div class="card"><div class="s" style="color:var(--muted)">À vérifier :</div>'+j.notes.map(function(n){return '<div class="s">'+esc(n)+'</div>'}).join("")+'</div>':'')+'<div class="row"><button class="btn grow" data-act="close">Fermer</button></div>');
+  });
+});
 
 function invSheet(){
   openSheet('<h2>Reçu</h2><div class="empty">Chargement…</div>');
@@ -702,6 +734,10 @@ document.addEventListener("click",function(e){
       api("inv_set",{phone:$("#iv_phone").value,addr:$("#iv_addr").value}).then(function(){if(!lf)return;var fd=new FormData();fd.append("logo",lf);return api("inv_logo",undefined,fd)}).then(function(){toast("Reçu mis à jour.");closeSheet()}).catch(function(e){b.disabled=false;b.textContent="Enregistrer";toast(e.message)});break}
     case "ivlogodel":api("inv_logo_del",{}).then(function(){toast("Logo retiré.");invSheet()}).catch(function(e){toast(e.message)});break;
     case "bk":bkSheet();break;
+    case "woo":wooSheet();break;
+    case "woosave":wooSave();break;
+    case "wooplan":wooPlan();break;
+    case "woosync":wooSync();break;
     case "bksave":api("bk_set",{email:$("#bk_mail").value.trim()}).then(function(){toast($("#bk_mail").value.trim()?"Adresse enregistrée.":"Envoi désactivé.")}).catch(function(e){toast(e.message)});break;
     case "bktest":b.disabled=true;b.textContent="Envoi…";api("bk_set",{email:$("#bk_mail").value.trim()}).then(function(){return api("bk_test",{})}).then(function(){toast("E-mail envoyé. Vérifiez votre boîte (et les courriers indésirables).");bkSheet()}).catch(function(e){b.disabled=false;b.textContent="Envoyer un test";toast(e.message)});break;
     case "bkcopy":{var t=$("#bk_cron");t.select();try{document.execCommand("copy");toast("Commande copiée.")}catch(x){toast("Sélectionnez et copiez le texte.")}break}

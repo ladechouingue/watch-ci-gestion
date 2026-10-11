@@ -56,6 +56,72 @@ function body(): array {
 }
 
 function localVersion(): string { $v = trim((string)@file_get_contents(__DIR__ . '/VERSION')); return $v === '' ? '0' : $v; }
+/* ---------- Lien WooCommerce (outil -> site) ---------- */
+function wooCfg(PDO $pdo): array {
+    $u = rtrim((string)(setting($pdo, 'woo_url') ?? ''), '/');
+    return ['url' => $u, 'key' => (string)(setting($pdo, 'woo_key') ?? ''), 'secret' => (string)(setting($pdo, 'woo_secret') ?? '')];
+}
+function wooReq(array $c, string $method, string $path, ?array $data = null): array {
+    if ($c['url'] === '' || $c['key'] === '' || $c['secret'] === '') { fail('Renseignez l\'adresse du site et les clés WooCommerce.'); }
+    if (!function_exists('curl_init')) { fail('cURL est nécessaire sur l\'hébergement pour ce lien.', 500); }
+    $sep = strpos($path, '?') === false ? '?' : '&';
+    $url = $c['url'] . '/wp-json/wc/v3/' . $path . $sep . 'consumer_key=' . rawurlencode($c['key']) . '&consumer_secret=' . rawurlencode($c['secret']);
+    $ch = curl_init($url);
+    $h = ['User-Agent: watch-ci-gestion', 'Accept: application/json'];
+    $o = [CURLOPT_RETURNTRANSFER => true, CURLOPT_FOLLOWLOCATION => true, CURLOPT_TIMEOUT => 40, CURLOPT_CUSTOMREQUEST => $method];
+    if ($data !== null) { $o[CURLOPT_POSTFIELDS] = json_encode($data); $h[] = 'Content-Type: application/json'; }
+    $o[CURLOPT_HTTPHEADER] = $h; curl_setopt_array($ch, $o);
+    $body = curl_exec($ch); $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE); $err = curl_error($ch); curl_close($ch);
+    if ($body === false) { fail('Site injoignable : ' . $err, 502); }
+    $j = json_decode((string)$body, true);
+    if ($code >= 400) {
+        $m = is_array($j) && isset($j['message']) ? strip_tags((string)$j['message']) : ('code ' . $code);
+        if ($code === 401 || $code === 403) { $m = 'Clés refusées par le site (' . $m . ')'; }
+        fail('WooCommerce : ' . $m, 502);
+    }
+    return is_array($j) ? $j : [];
+}
+function wooNorm(string $s): string {
+    $s = mb_strtolower($s);
+    $s = strtr($s, ['é'=>'e','è'=>'e','ê'=>'e','ë'=>'e','à'=>'a','â'=>'a','î'=>'i','ï'=>'i','ô'=>'o','ù'=>'u','û'=>'u','ç'=>'c']);
+    $s = preg_replace('/\b(bracelet|apple|watch|pour)\b/', ' ', $s);
+    return trim(preg_replace('/[^a-z0-9]+/', ' ', $s));
+}
+function wooNums(string $s): array { preg_match_all('/\d+/', $s, $m); return array_values(array_unique($m[0])); }
+/* Produits du site (avec variations) */
+function wooProducts(array $c): array {
+    $all = [];
+    for ($p = 1; $p <= 10; $p++) {
+        $page = wooReq($c, 'GET', 'products?per_page=100&status=publish&page=' . $p);
+        foreach ($page as $x) { $all[] = $x; }
+        if (count($page) < 100) { break; }
+    }
+    $res = [];
+    foreach ($all as $x) {
+        $e = ['id' => (int)$x['id'], 'name' => html_entity_decode((string)($x['name'] ?? '')), 'type' => (string)($x['type'] ?? 'simple'), 'stock' => $x['stock_quantity'] ?? null, 'vars' => []];
+        if ($e['type'] === 'variable') {
+            foreach (wooReq($c, 'GET', 'products/' . $e['id'] . '/variations?per_page=100') as $v) {
+                $lab = [];
+                foreach (($v['attributes'] ?? []) as $a) { $lab[] = (string)($a['option'] ?? ''); }
+                $e['vars'][] = ['id' => (int)$v['id'], 'label' => implode(' ', $lab), 'stock' => $v['stock_quantity'] ?? null];
+            }
+        }
+        $res[] = $e;
+    }
+    return $res;
+}
+function wooGroups(PDO $pdo): array {
+    $m = [];
+    foreach ($pdo->query('SELECT data FROM products') as $r) {
+        $p = json_decode((string)$r['data'], true); if (!is_array($p)) { continue; }
+        $g = (string)($p['g'] ?? ($p['id'] ?? '')); if ($g === '') { continue; }
+        $sz = preg_replace('/\s+/', '', (string)($p['size'] ?? ''));
+        if (!isset($m[$g])) { $m[$g] = ['g' => $g, 'name' => trim((string)($p['name'] ?? '')), 'color' => trim((string)($p['color'] ?? '')), 'sizes' => []]; }
+        if (!isset($m[$g]['sizes'][$sz])) { $m[$g]['sizes'][$sz] = (int)($p['stock'] ?? 0); }
+    }
+    return array_values($m);
+}
+
 function httpGet(string $url, array $headers = [], int $timeout = 30): array {
     $headers[] = 'User-Agent: watch-ci-gestion';
     if (function_exists('curl_init')) {
@@ -681,6 +747,81 @@ switch ($r) {
         if (!$isPost) { fail('POST requis.', 405); }
         @unlink(__DIR__ . '/uploads/logo.jpg');
         out(['ok' => true]);
+    }
+
+    case 'woo_get': {
+        $c = wooCfg($pdo);
+        out(['url' => $c['url'], 'hasKeys' => $c['key'] !== '' && $c['secret'] !== '', 'last' => (string)(setting($pdo, 'woo_last') ?? '')]);
+    }
+
+    case 'woo_set': {
+        if (!$isPost) { fail('POST requis.', 405); }
+        $b = body();
+        $u = rtrim(trim((string)($b['url'] ?? '')), '/');
+        if ($u !== '' && !preg_match('#^https://[^\s/]+#i', $u)) { fail('L\'adresse du site doit commencer par https://'); }
+        setSetting($pdo, 'woo_url', $u);
+        $k = trim((string)($b['key'] ?? '')); $sec = trim((string)($b['secret'] ?? ''));
+        if ($k !== '') { setSetting($pdo, 'woo_key', $k); }
+        if ($sec !== '') { setSetting($pdo, 'woo_secret', $sec); }
+        out(['ok' => true]);
+    }
+
+    case 'woo_plan': {
+        @set_time_limit(120);
+        $c = wooCfg($pdo);
+        $site = wooProducts($c);
+        $groups = wooGroups($pdo);
+        $map = [];
+        foreach ($groups as $g) { $v = setting($pdo, 'woomap:' . $g['g']); if ($v !== null) { $map[$g['g']] = (int)$v; } }
+        $rows = [];
+        foreach ($groups as $g) {
+            $gid = $g['g']; $want = wooNorm($g['name'] . ' ' . $g['color']); $match = $map[$gid] ?? 0;
+            if (!$match) {
+                foreach ($site as $x) { if (wooNorm($x['name']) === $want) { $match = $x['id']; break; } }
+            }
+            if (!$match) {
+                foreach ($site as $x) { $n = wooNorm($x['name']); if ($n !== '' && $want !== '' && (strpos($n, $want) !== false || strpos($want, $n) !== false)) { $match = $x['id']; break; } }
+            }
+            $rows[] = ['g' => $gid, 'name' => trim($g['name'] . ($g['color'] !== '' ? ' · ' . $g['color'] : '')), 'sizes' => $g['sizes'], 'match' => $match];
+        }
+        $list = array_map(function ($x) { return ['id' => $x['id'], 'name' => $x['name'], 'type' => $x['type'], 'nv' => count($x['vars'])]; }, $site);
+        out(['rows' => $rows, 'site' => $list]);
+    }
+
+    case 'woo_sync': {
+        if (!$isPost) { fail('POST requis.', 405); }
+        @set_time_limit(180);
+        $c = wooCfg($pdo);
+        $maps = (array)(body()['map'] ?? []);
+        $site = []; foreach (wooProducts($c) as $x) { $site[$x['id']] = $x; }
+        $groups = []; foreach (wooGroups($pdo) as $g) { $groups[$g['g']] = $g; }
+        $done = 0; $notes = [];
+        foreach ($maps as $gid => $wid) {
+            $gid = (string)$gid; $wid = (int)$wid;
+            if (!isset($groups[$gid])) { continue; }
+            if ($wid <= 0) { $pdo->prepare('DELETE FROM settings WHERE k=?')->execute(['woomap:' . $gid]); continue; }
+            if (!isset($site[$wid])) { $notes[] = $groups[$gid]['name'] . ' : produit du site introuvable'; continue; }
+            setSetting($pdo, 'woomap:' . $gid, (string)$wid);
+            $g = $groups[$gid]; $x = $site[$wid];
+            if ($x['type'] === 'variable' && $x['vars']) {
+                foreach ($x['vars'] as $v) {
+                    $vn = wooNums($v['label']); $stock = null;
+                    foreach ($g['sizes'] as $sz => $st) {
+                        $tn = wooNums((string)$sz);
+                        if ($vn && !array_diff($vn, $tn)) { $stock = $st; break; }
+                    }
+                    if ($stock === null) { $notes[] = $g['name'] . ' · « ' . $v['label'] . ' » : taille non trouvée dans l\'outil'; continue; }
+                    wooReq($c, 'PUT', 'products/' . $wid . '/variations/' . $v['id'], ['manage_stock' => true, 'stock_quantity' => max(0, $stock)]);
+                    $done++;
+                }
+            } else {
+                $tot = array_sum($g['sizes']);
+                wooReq($c, 'PUT', 'products/' . $wid, ['manage_stock' => true, 'stock_quantity' => max(0, (int)$tot)]);
+                $done++;
+            }
+        }
+        setSetting($pdo, 'woo_last', date('Y-m-d H:i'));
+        out(['ok' => true, 'updated' => $done, 'notes' => $notes]);
     }
 
     case 'bk_get':
