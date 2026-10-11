@@ -178,6 +178,34 @@ function wooCatIds(PDO $pdo, array $g, array $cats, array $trashed): array {
     return array_values(array_unique($ids));
 }
 
+/* Crée un produit de l'outil sur le site (variable si plusieurs tailles) */
+function wooCreate(PDO $pdo, array $c, array $g, array $cats, array $trashed): string {
+    $proto = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $dir = rtrim(str_replace('\\', '/', dirname((string)($_SERVER['SCRIPT_NAME'] ?? '/api.php'))), '/');
+    $name = $g['name'];
+    if ($g['color'] !== '' && stripos(wooNorm($name), wooNorm($g['color'])) === false) { $name .= ' ' . $g['color']; }
+    $data = ['name' => $name, 'status' => 'publish'];
+    $cl = wooCatIds($pdo, $g, $cats, $trashed);
+    if ($cl) { $data['categories'] = array_map(function ($i) { return ['id' => $i]; }, $cl); }
+    if (preg_match('#^uploads/[a-f0-9]{24}\.jpg$#', $g['photo'])) { $data['images'] = [['src' => $proto . '://' . ($_SERVER['HTTP_HOST'] ?? '') . $dir . '/' . $g['photo']]]; }
+    $price = (string)(int)round($g['price']);
+    $sizes = $g['sizes']; $keys = array_keys($sizes);
+    $single = count($keys) === 1 && $keys[0] === '';
+    if ($single) {
+        $data += ['type' => 'simple', 'regular_price' => $price, 'manage_stock' => true, 'stock_quantity' => max(0, (int)$sizes['']), 'stock_status' => 'instock'];
+        $p = wooReq($c, 'POST', 'products', $data);
+    } else {
+        $lab = function ($k) { return $k === '' ? 'Unique' : $k . ' mm'; };
+        $data += ['type' => 'variable', 'attributes' => [['name' => 'Taille', 'visible' => true, 'variation' => true, 'options' => array_map($lab, $keys)]]];
+        $p = wooReq($c, 'POST', 'products', $data);
+        $vars = [];
+        foreach ($sizes as $k => $st) { $vars[] = ['regular_price' => $price, 'manage_stock' => true, 'stock_quantity' => max(0, (int)$st), 'attributes' => [['name' => 'Taille', 'option' => $lab($k)]]]; }
+        wooReq($c, 'POST', 'products/' . (int)$p['id'] . '/variations/batch', ['create' => $vars]);
+    }
+    if (!empty($p['id'])) { setSetting($pdo, 'woomap:' . $g['g'], (string)(int)$p['id']); }
+    return $name;
+}
+
 function httpGet(string $url, array $headers = [], int $timeout = 30): array {
     $headers[] = 'User-Agent: watch-ci-gestion';
     if (function_exists('curl_init')) {
@@ -874,29 +902,7 @@ switch ($r) {
         }
         $g = null; foreach ($groups as $x) { if ($x['g'] === (string)($b['g'] ?? '')) { $g = $x; break; } }
         if (!$g) { fail('Produit introuvable dans l\'outil.'); }
-        $proto = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-        $dir = rtrim(str_replace('\\', '/', dirname((string)($_SERVER['SCRIPT_NAME'] ?? '/api.php'))), '/');
-        $name = $g['name'];
-        if ($g['color'] !== '' && stripos(wooNorm($name), wooNorm($g['color'])) === false) { $name .= ' ' . $g['color']; }
-        $data = ['name' => $name, 'status' => 'publish'];
-        $cl = wooCatIds($pdo, $g, wooAllCats($c), $step === 1 ? wooTrashed($c) : []);
-        if ($cl) { $data['categories'] = array_map(function ($i) { return ['id' => $i]; }, $cl); }
-        if (preg_match('#^uploads/[a-f0-9]{24}\.jpg$#', $g['photo'])) { $data['images'] = [['src' => $proto . '://' . ($_SERVER['HTTP_HOST'] ?? '') . $dir . '/' . $g['photo']]]; }
-        $price = (string)(int)round($g['price']);
-        $sizes = $g['sizes']; $keys = array_keys($sizes);
-        $single = count($keys) === 1 && $keys[0] === '';
-        if ($single) {
-            $data += ['type' => 'simple', 'regular_price' => $price, 'manage_stock' => true, 'stock_quantity' => max(0, (int)$sizes['']), 'stock_status' => 'instock'];
-            $p = wooReq($c, 'POST', 'products', $data);
-        } else {
-            $lab = function ($k) { return $k === '' ? 'Unique' : $k . ' mm'; };
-            $data += ['type' => 'variable', 'attributes' => [['name' => 'Taille', 'visible' => true, 'variation' => true, 'options' => array_map($lab, $keys)]]];
-            $p = wooReq($c, 'POST', 'products', $data);
-            $vars = [];
-            foreach ($sizes as $k => $st) { $vars[] = ['regular_price' => $price, 'manage_stock' => true, 'stock_quantity' => max(0, (int)$st), 'attributes' => [['name' => 'Taille', 'option' => $lab($k)]]]; }
-            wooReq($c, 'POST', 'products/' . (int)$p['id'] . '/variations/batch', ['create' => $vars]);
-        }
-        if (!empty($p['id'])) { setSetting($pdo, 'woomap:' . $g['g'], (string)(int)$p['id']); }
+        $name = wooCreate($pdo, $c, $g, wooAllCats($c), $step === 1 ? wooTrashed($c) : []);
         setSetting($pdo, 'woo_last', date('Y-m-d H:i'));
         out(['ok' => true, 'name' => $name]);
     }
@@ -916,7 +922,7 @@ switch ($r) {
             wooReq($c, 'PUT', 'products/' . $wid, ['categories' => array_map(function ($i) { return ['id' => $i]; }, $ids)]);
             $done++;
         }
-        out(['ok' => true, 'updated' => $done, 'notes' => $notes]);
+        out(['ok' => true, 'updated' => $done, 'created' => $created, 'notes' => $notes]);
     }
 
     case 'woo_sync': {
@@ -952,8 +958,17 @@ switch ($r) {
                 $done++;
             }
         }
+        $created = 0; $cats = null; $trashed = [];
+        foreach ($groups as $gid2 => $g2) {
+            $w2 = isset($maps[$gid2]) ? (int)$maps[$gid2] : 0;
+            if ($w2 > 0 || (setting($pdo, 'woomap:' . $gid2) !== null && !isset($maps[$gid2]))) { continue; }
+            if (!empty(body()['create'])) {
+                if ($cats === null) { $cats = wooAllCats($c); $trashed = wooTrashed($c); }
+                try { wooCreate($pdo, $c, $g2, $cats, $trashed); $created++; } catch (Throwable $e) { $notes[] = $g2['name'] . ' : création impossible'; }
+            }
+        }
         setSetting($pdo, 'woo_last', date('Y-m-d H:i'));
-        out(['ok' => true, 'updated' => $done, 'notes' => $notes]);
+        out(['ok' => true, 'updated' => $done, 'created' => $created, 'notes' => $notes]);
     }
 
     case 'bk_get':

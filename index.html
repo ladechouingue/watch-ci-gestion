@@ -187,7 +187,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=65;
+var PAGE_V=66;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -500,8 +500,8 @@ function wooPlan(){
 }
 var wooSync=guard(function(){
   var map={};document.querySelectorAll(".woosel").forEach(function(s){map[s.dataset.g]=parseInt(s.value,10)||0});
-  return api("woo_sync",{map:map}).then(function(j){
-    openSheet('<h2>Synchronisation</h2><p><b>'+j.updated+'</b> mise'+(j.updated>1?'s':'')+' à jour sur le site.</p>'+(j.notes&&j.notes.length?'<div class="card"><div class="s" style="color:var(--muted)">À vérifier :</div>'+j.notes.map(function(n){return '<div class="s">'+esc(n)+'</div>'}).join("")+'</div>':'')+'<div class="row"><button class="btn grow" data-act="close">Fermer</button></div>');
+  return api("woo_sync",{map:map,create:1}).then(function(j){
+    openSheet('<h2>Synchronisation</h2><p><b>'+j.updated+'</b> mise'+(j.updated>1?'s':'')+' à jour sur le site'+(j.created?', <b>'+j.created+'</b> produit'+(j.created>1?'s':'')+' créé'+(j.created>1?'s':'')+' (dans les bonnes catégories)':'')+'.</p>'+(j.notes&&j.notes.length?'<div class="card"><div class="s" style="color:var(--muted)">À vérifier :</div>'+j.notes.map(function(n){return '<div class="s">'+esc(n)+'</div>'}).join("")+'</div>':'')+'<div class="row"><button class="btn grow" data-act="close">Fermer</button></div>');
   });
 });
 
