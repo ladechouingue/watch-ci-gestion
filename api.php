@@ -696,6 +696,90 @@ function buildCatalogueClient(array $sections, string $watch, ?array $logo): str
     return $out . "trailer\n<< /Size $mx /Root 1 0 R >>\nstartxref\n$xr\n%%EOF";
 }
 
+/* Commandes du site -> outil : création, stock, annulation */
+function wooImportOrders(PDO $pdo, array $c): array {
+    $res = ['new' => 0, 'cancelled' => 0, 'notes' => []];
+    $busy = (int)(setting($pdo, 'woo_ord_busy') ?? 0);
+    if ($busy > time() - 90) { return $res + ['busy' => true]; }
+    setSetting($pdo, 'woo_ord_busy', (string)time());
+    $since = setting($pdo, 'woo_ord_since');
+    if ($since === null) { $since = gmdate('Y-m-d\TH:i:s', time() - 3600); setSetting($pdo, 'woo_ord_since', $since); }
+    $list = [];
+    for ($pg = 1; $pg <= 3; $pg++) {
+        $page = wooReq($c, 'GET', 'orders?per_page=100&orderby=date&order=desc&dates_are_gmt=true&after=' . rawurlencode((string)$since) . '&page=' . $pg);
+        foreach ($page as $o) { $list[] = $o; }
+        if (count($page) < 100) { break; }
+    }
+    usort($list, function ($a, $b) { return strcmp((string)$a['date_created_gmt'], (string)$b['date_created_gmt']); });
+    /* index outil : produit du site -> groupe -> taille -> id de produit */
+    $rev = []; foreach ($pdo->query("SELECT k,v FROM settings WHERE k LIKE 'woomap:%'") as $r) { $rev[(int)$r['v']] = substr((string)$r['k'], 7); }
+    $bySize = []; $costOf = [];
+    foreach (load($pdo, 'products') as $p) { $g = (string)($p['g'] ?? $p['id']); $k = preg_replace('/\s+/', '', (string)($p['size'] ?? '')); $bySize[$g][$k] = $p['id']; $costOf[$p['id']] = (float)($p['cost'] ?? 0); }
+    $key = function (string $t) { $a = wooNums($t); sort($a); return implode('/', $a); };
+    $adjust = function (array $d) use ($pdo) {
+        $sel = $pdo->prepare('SELECT data FROM products WHERE id=?'); $upd = $pdo->prepare('UPDATE products SET data=?, updated=? WHERE id=?');
+        foreach ($d as $pid => $delta) {
+            $sel->execute([$pid]); $raw = $sel->fetchColumn(); if ($raw === false || !$delta) { continue; }
+            $x = json_decode((string)$raw, true); if (!is_array($x)) { continue; }
+            $x['stock'] = (int)($x['stock'] ?? 0) + (int)$delta; $upd->execute([json_encode($x, JSON_UNESCAPED_UNICODE), time(), $pid]);
+        }
+    };
+    foreach ($list as $o) {
+        $wid = (int)$o['id']; $st = (string)($o['status'] ?? '');
+        $mapKey = 'woord:' . $wid; $had = setting($pdo, $mapKey);
+        $dead = in_array($st, ['cancelled', 'refunded', 'failed', 'trash'], true);
+        if ($had !== null) {
+            $oid = $had;
+            $q = $pdo->prepare('SELECT data FROM orders WHERE id=?'); $q->execute([$oid]); $raw = $q->fetchColumn();
+            if ($raw === false) { continue; }
+            $od = json_decode((string)$raw, true); if (!is_array($od)) { continue; }
+            if ($dead && ($od['status'] ?? '') !== 'annule') {
+                $back = []; foreach (($od['items'] ?? []) as $it) { if (!empty($it['pid'])) { $back[$it['pid']] = ($back[$it['pid']] ?? 0) + (int)$it['qty']; } }
+                $adjust($back); $od['status'] = 'annule';
+                $pdo->prepare('UPDATE orders SET data=?, updated=? WHERE id=?')->execute([json_encode($od, JSON_UNESCAPED_UNICODE), time(), $oid]); $res['cancelled']++;
+            } elseif (!$dead && $st === 'completed' && ($od['status'] ?? '') === 'a_livrer') {
+                $od['status'] = 'livre'; $pdo->prepare('UPDATE orders SET data=?, updated=? WHERE id=?')->execute([json_encode($od, JSON_UNESCAPED_UNICODE), time(), $oid]);
+            }
+            continue;
+        }
+        if ($dead || !in_array($st, ['processing', 'completed', 'on-hold'], true)) { continue; }
+        $items = []; $dec = [];
+        foreach ((array)($o['line_items'] ?? []) as $li) {
+            $qty = max(1, (int)($li['quantity'] ?? 1)); $price = (int)round((float)($li['subtotal'] ?? 0) / $qty);
+            $g = $rev[(int)($li['product_id'] ?? 0)] ?? null; $pid = '';
+            $opt = ''; foreach ((array)($li['meta_data'] ?? []) as $m) { if (is_string($m['display_value'] ?? null) && preg_match('/\d/', (string)$m['display_value'])) { $opt = (string)$m['display_value']; break; } }
+            if ($g !== null && isset($bySize[$g])) {
+                if ($opt === '' && count($bySize[$g]) === 1) { $pid = (string)reset($bySize[$g]); }
+                foreach ($bySize[$g] as $sz => $id) { if ($opt !== '' && $key($opt) !== '' && $key($opt) === $key((string)$sz)) { $pid = (string)$id; break; } }
+                if ($pid === '' && $opt !== '') { foreach ($bySize[$g] as $sz => $id) { $vn = wooNums($opt); if ($vn && !array_diff($vn, wooNums((string)$sz))) { $pid = (string)$id; break; } } }
+            }
+            if ($pid === '') { $res['notes'][] = 'Commande #' . ($o['number'] ?? $wid) . ' : « ' . ($li['name'] ?? '') . ' » non lié à un produit de l\'outil (stock non modifié)'; }
+            $items[] = ['pid' => $pid, 'label' => html_entity_decode((string)($li['name'] ?? 'Article')), 'qty' => $qty, 'price' => $price, 'cost' => $pid !== '' ? ($costOf[$pid] ?? 0) : 0];
+            if ($pid !== '') { $dec[$pid] = ($dec[$pid] ?? 0) - $qty; }
+        }
+        if (!$items) { continue; }
+        $disc = 0.0; foreach ((array)($o['fee_lines'] ?? []) as $f) { $t = (float)($f['total'] ?? 0); if ($t < 0) { $disc += -$t; } }
+        $b = (array)($o['billing'] ?? []); $sh = (array)($o['shipping'] ?? []);
+        $name = trim(((string)($b['first_name'] ?? '')) . ' ' . ((string)($b['last_name'] ?? ''))); if ($name === '') { $name = trim(((string)($sh['first_name'] ?? '')) . ' ' . ((string)($sh['last_name'] ?? ''))); }
+        $place = trim(implode(', ', array_filter([(string)($sh['address_1'] ?? $b['address_1'] ?? ''), (string)($sh['city'] ?? $b['city'] ?? '')])));
+        $pm = (string)($o['payment_method'] ?? ''); $pt = (string)($o['payment_method_title'] ?? '');
+        $paid = $st === 'completed' || ($st === 'processing' && $pm !== 'cod');
+        $mm = $paid && (bool)preg_match('/mobile|money|wave|orange|mtn|moov|momo/i', $pm . ' ' . $pt);
+        $ship = (float)($o['shipping_total'] ?? 0);
+        $doc = ['date' => substr((string)($o['date_created'] ?? date('Y-m-d')), 0, 10), 'customer' => $name !== '' ? $name : 'Client du site', 'phone' => (string)($b['phone'] ?? ''), 'place' => $place,
+            'channel' => 'Site web', 'items' => $items, 'disc' => $disc, 'dcost' => $ship, 'fee' => 0, 'paid' => $paid, 'mm' => $mm,
+            'note' => 'Commande du site n°' . ($o['number'] ?? $wid) . ($pt !== '' ? ' · ' . $pt : ''), 'status' => $st === 'completed' ? 'livre' : 'a_livrer',
+            'createdAt' => (string)($o['date_created_gmt'] ?? gmdate('Y-m-d\TH:i:s')) . 'Z', 'woo' => $wid];
+        $oid = 'o' . base_convert((string)(time() * 1000 + $res['new']), 10, 36) . substr(bin2hex(random_bytes(2)), 0, 3);
+        $pdo->prepare('INSERT INTO orders(id,data,updated) VALUES(?,?,?)')->execute([$oid, json_encode($doc, JSON_UNESCAPED_UNICODE), time()]);
+        $adjust($dec);
+        setSetting($pdo, $mapKey, $oid);
+        $res['new']++;
+    }
+    setSetting($pdo, 'woo_ord_busy', '0');
+    return $res;
+}
+
 switch ($r) {
     case 'state':
         $bkTo = (string)(setting($pdo, 'bk_email') ?? '');
@@ -1146,12 +1230,22 @@ switch ($r) {
         out(['ok' => true, 'updated' => $done, 'created' => $created, 'notes' => $notes]);
     }
 
+    case 'woo_orders': {
+        if (!$isPost) { fail('POST requis.', 405); }
+        session_write_close();
+        $c = wooCfg($pdo);
+        if ($c['url'] === '' || $c['key'] === '' || $c['secret'] === '') { out(['skipped' => true]); }
+        @set_time_limit(90);
+        out(wooImportOrders($pdo, $c));
+    }
+
     case 'woo_push': {
         if (!$isPost) { fail('POST requis.', 405); }
         session_write_close();
         $c = wooCfg($pdo);
         if ($c['url'] === '' || $c['key'] === '' || $c['secret'] === '') { out(['skipped' => true]); }
         if (!empty(body()['force'])) { $pdo->exec("DELETE FROM settings WHERE k LIKE 'woosig:%'"); setSetting($pdo, 'woo_busy', '0'); }
+        wooImportOrders($pdo, $c);
         $changed = [];
         foreach (wooGroups($pdo) as $g) { if (setting($pdo, 'woosig:' . $g['g']) !== wooSig($g)) { $changed[] = $g; } }
         if (!$changed) { out(['changed' => 0]); }
