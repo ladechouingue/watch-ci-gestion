@@ -1324,6 +1324,17 @@ switch ($r) {
         out(['ok' => true, 'updated' => $done, 'created' => $created, 'notes' => $notes]);
     }
 
+    case 'woo_cancel': {
+        if (!$isPost) { fail('POST requis.', 405); }
+        session_write_close();
+        $id = (string)(body()['id'] ?? ''); if (!okId($id)) { fail('Données invalides.'); }
+        $q = $pdo->prepare('SELECT data FROM orders WHERE id=?'); $q->execute([$id]); $d = json_decode((string)$q->fetchColumn(), true);
+        $c = wooCfg($pdo);
+        if (!is_array($d) || empty($d['woo']) || $c['key'] === '') { out(['skipped' => true]); }
+        wooReq($c, 'PUT', 'orders/' . (int)$d['woo'], ['status' => 'cancelled']);
+        out(['ok' => true]);
+    }
+
     case 'push_key': {
         [, $pub] = pushKeys($pdo);
         $n = (int)$pdo->query("SELECT COUNT(*) FROM settings WHERE k LIKE 'pushsub:%'")->fetchColumn();

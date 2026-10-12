@@ -187,7 +187,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=80;
+var PAGE_V=81;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -733,7 +733,7 @@ function orderSheet(id){
 }
 var setStatus=guard(function(id,v){return patch("orders",id,{status:v}).then(function(){closeSheet()})});
 var setPaid=guard(function(id,v){return patch("orders",id,v==="0"?{paid:false,mm:false}:{paid:true,mm:true}).then(function(){closeSheet()})});
-var cancelOrder=guard(function(id){var o=orders.find(function(x){return x.id===id});if(!o)return;return patch("orders",id,{status:"annule"}).then(function(){return adjustStock(o.items||[],1)}).then(function(){closeSheet();toast("Commande annulée, stock remis.")})});
+var cancelOrder=guard(function(id){var o=orders.find(function(x){return x.id===id});if(!o)return;return patch("orders",id,{status:"annule"}).then(function(){return adjustStock(o.items||[],1)}).then(function(){if(o.woo)return api("woo_cancel",{id:id}).catch(function(e){toast("Annulée ici, mais pas sur le site : "+e.message)})}).then(function(){closeSheet();toast("Commande annulée, stock remis.")})});
 var delOrder=guard(function(id){return del("orders",id).then(function(){closeSheet()})});
 
 var pendingPhoto=null, curGroup=null;
