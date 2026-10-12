@@ -187,7 +187,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=79;
+var PAGE_V=80;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -425,6 +425,31 @@ function openSheet(html){
 function closeSheet(){$("#layer").innerHTML=""}
 document.addEventListener("keydown",function(e){if(e.key==="Escape"){if($("#pk_bd"))closePicker();else closeSheet()}if(e.key==="Enter"&&e.target.id==="pw"){e.preventDefault();var b=$("[data-act=login],[data-act=setup]");if(b)b.click()}});
 
+/* ---------- Notifications push ---------- */
+function pushOk(){return "serviceWorker" in navigator&&"PushManager" in window&&"Notification" in window}
+function u8(b){var p="=".repeat((4-b.length%4)%4),r=atob((b+p).replace(/-/g,"+").replace(/_/g,"/")),a=new Uint8Array(r.length);for(var i=0;i<r.length;i++)a[i]=r.charCodeAt(i);return a}
+function notifSheet(msg){
+  var st=pushOk()?(Notification.permission==="granted"?"Autorisées sur cet appareil.":Notification.permission==="denied"?"Refusées : réactivez-les dans Réglages de l'iPhone › Notifications › Watch CI.":"Pas encore activées."):"Ouvrez l'outil depuis l'icône « Watch CI » de l'écran d'accueil de l'iPhone (pas depuis Safari) pour activer les notifications.";
+  openSheet('<h2>Notifications de commandes</h2><p class="s" style="color:var(--muted)">Recevez une notification sur ce téléphone à chaque nouvelle commande, du site ou de l\'outil, même quand l\'outil est fermé.</p><div class="card"><div class="s">'+esc(msg||st)+'</div></div>'+
+    '<div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn primary" data-act="notifon" type="button"'+(pushOk()?'':' disabled')+'>Activer sur cet appareil</button><button class="btn" data-act="notiftest" type="button"'+(pushOk()?'':' disabled')+'>Envoyer un test</button><button class="btn danger" data-act="notifoff" type="button"'+(pushOk()?'':' disabled')+'>Désactiver</button></div>'+
+    '<div class="row"><span class="grow"></span><button class="btn" data-act="close">Fermer</button></div>');
+}
+function notifOn(b){
+  if(!pushOk()){notifSheet();return}
+  b.disabled=true;
+  var perm=Notification.requestPermission();
+  Promise.resolve(perm).then(function(r){
+    if(r!=="granted"){notifSheet("Autorisation refusée. Réactivez-la dans les réglages de l'iPhone.");throw 0}
+    return navigator.serviceWorker.register("sw.js").then(function(){return navigator.serviceWorker.ready});
+  }).then(function(reg){
+    return api("push_key").then(function(k){
+      return reg.pushManager.getSubscription().then(function(old){return old||reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:u8(k.key)})});
+    })
+  }).then(function(sub){return api("push_sub",{sub:sub.toJSON()})})
+  .then(function(){return api("push_hooks",{}).then(function(j){return j}).catch(function(e){return {err:e.message}})})
+  .then(function(j){notifSheet(j&&j.err?"Notifications activées sur ce téléphone. Mais le site n'a pas pu être relié en direct : "+j.err+" (les commandes seront alors lues quand l'outil est ouvert).":"Notifications activées. Appuyez sur « Envoyer un test ».")})
+  .catch(function(e){if(e===0)return;b.disabled=false;toast(e&&e.message?e.message:"Activation impossible.")});
+}
 /* ---------- Catalogues PDF ---------- */
 var CLI=[["38","38 mm"],["40","40 mm"],["41","41 mm"],["42","42 mm"],["42s10","42 mm série 10"],["44","44 mm"],["45","45 mm"],["46","46 mm"],["49","49 mm"]];
 function catSize(n){return (n/1048576).toFixed(1).replace(".",",")+" Mo"}
@@ -486,6 +511,7 @@ function settingsSheet(){
     '<button class="setrow" data-act="bk" type="button"><span>Sauvegarde par e-mail et restauration</span>'+chev+'</button>'+
     '<button class="setrow" data-act="inv" type="button"><span>Reçu (logo, téléphone, adresse)</span>'+chev+'</button>'+
     '<button class="setrow" data-act="prices" type="button"><span>Changer les prix en masse</span>'+chev+'</button>'+
+    '<button class="setrow" data-act="notif" type="button"><span>Notifications de commandes</span>'+chev+'</button>'+
     '<button class="setrow" data-act="woo" type="button"><span>Lien avec le site (WooCommerce)</span>'+chev+'</button>'+
     '<button class="setrow" data-act="chkupd" type="button"><span>Vérifier les mises à jour</span>'+chev+'</button>'+
     '<button class="setrow" data-act="rollback" data-confirm="Revenir à la version précédente ?" type="button"><span>Version précédente</span>'+chev+'</button>'+
@@ -835,6 +861,10 @@ document.addEventListener("click",function(e){
       api("cat_client",{k:k}).then(function(j){var f="../catalogues-client/"+j.file+"?v="+j.v,l="client "+zl,fe=esc(f);
         openSheet('<h2>Catalogue '+esc(zl)+'</h2><p class="s" style="color:var(--muted)">'+j.n+' article'+(j.n>1?'s':'')+' en stock. Généré à l\'instant.</p><div class="row catacts"><a class="btn primary" href="uploads/catalogues-client/'+j.file+'?v='+j.v+'" target="_blank" rel="noopener">Ouvrir</a><button class="btn" data-act="catlink" data-f="'+fe+'">Lien</button><button class="btn" data-act="catshare" data-f="'+fe+'" data-l="'+esc(l)+'">Partager</button></div><div class="row"><button class="btn" data-act="cats">Retour</button><span class="grow"></span><button class="btn" data-act="close">Fermer</button></div>')
       }).catch(function(e){b.disabled=false;toast(e.message)});break}
+    case "notif":notifSheet();break;
+    case "notifon":notifOn(b);break;
+    case "notiftest":b.disabled=true;api("push_test",{}).then(function(j){b.disabled=false;toast(j.sent?"Notification envoyée.":"Aucun appareil abonné. Appuyez sur « Activer ».")}).catch(function(e){b.disabled=false;toast(e.message)});break;
+    case "notifoff":navigator.serviceWorker.getRegistration().then(function(reg){return reg&&reg.pushManager.getSubscription()}).then(function(sub){if(!sub){toast("Déjà désactivé.");return}var ep=sub.endpoint;return sub.unsubscribe().then(function(){return api("push_off",{endpoint:ep})}).then(function(){toast("Notifications désactivées.")})}).catch(function(e){toast(e.message||"Erreur")});break;
     case "catadd":addCat(b);break;
     case "catlink":copyCatLink(b.dataset.f);break;
     case "catren":{var it=b.closest(".item"),hd=it.firstChild;

@@ -302,6 +302,17 @@ function catList(PDO $pdo, string $dir): array {
 
 $r = $_GET['r'] ?? '';
 $isPost = $_SERVER['REQUEST_METHOD'] === 'POST';
+if ($r === 'woo_hook') {
+    $raw = (string)file_get_contents('php://input'); $sec = (string)(setting($pdo, 'woo_hook_secret') ?? '');
+    $sig = (string)($_SERVER['HTTP_X_WC_WEBHOOK_SIGNATURE'] ?? '');
+    if ($sec === '' || $sig === '' || !hash_equals(base64_encode(hash_hmac('sha256', $raw, $sec, true)), $sig)) { fail('Accès refusé.', 403); }
+    session_write_close(); ignore_user_abort(true); @set_time_limit(90);
+    http_response_code(200); echo '{"ok":true}';
+    if (function_exists('fastcgi_finish_request')) { fastcgi_finish_request(); } else { header('Connection: close'); header('Content-Length: 11'); @ob_end_flush(); @flush(); }
+    $c = wooCfg($pdo);
+    if ($c['url'] !== '' && $c['key'] !== '' && $c['secret'] !== '') { wooImportOrders($pdo, $c); }
+    exit;
+}
 if ($isPost && ($_SERVER['HTTP_X_GESTION'] ?? '') !== '1') { fail('Requête refusée.', 403); }
 
 $hash = setting($pdo, 'password_hash');
@@ -696,6 +707,83 @@ function buildCatalogueClient(array $sections, string $watch, ?array $logo): str
     return $out . "trailer\n<< /Size $mx /Root 1 0 R >>\nstartxref\n$xr\n%%EOF";
 }
 
+/* ---------- Notifications push (Web Push, sans bibliothèque) ---------- */
+function b64u(string $b): string { return rtrim(strtr(base64_encode($b), '+/', '-_'), '='); }
+function b64ud(string $s): string { return (string)base64_decode(strtr($s, '-_', '+/') . str_repeat('=', (4 - strlen($s) % 4) % 4)); }
+function pushKeys(PDO $pdo): array {
+    $pem = setting($pdo, 'vapid_priv'); $pub = setting($pdo, 'vapid_pub');
+    if ($pem && $pub) { return [$pem, $pub]; }
+    $k = openssl_pkey_new(['curve_name' => 'prime256v1', 'private_key_type' => OPENSSL_KEYTYPE_EC]);
+    if (!$k) { fail('OpenSSL ne peut pas créer les clés de notification.', 500); }
+    openssl_pkey_export($k, $pem); $d = openssl_pkey_get_details($k)['ec'];
+    $pub = b64u("\x04" . str_pad($d['x'], 32, "\0", STR_PAD_LEFT) . str_pad($d['y'], 32, "\0", STR_PAD_LEFT));
+    setSetting($pdo, 'vapid_priv', $pem); setSetting($pdo, 'vapid_pub', $pub);
+    return [$pem, $pub];
+}
+function derToRaw(string $der): string {
+    $o = 2; if (ord($der[1]) & 0x80) { $o += ord($der[1]) & 0x7f; }
+    $rl = ord($der[$o + 1]); $r = substr($der, $o + 2, $rl); $o += 2 + $rl;
+    $sl = ord($der[$o + 1]); $s = substr($der, $o + 2, $sl);
+    return str_pad(ltrim($r, "\0"), 32, "\0", STR_PAD_LEFT) . str_pad(ltrim($s, "\0"), 32, "\0", STR_PAD_LEFT);
+}
+function pushEncrypt(string $payload, string $uaPub, string $auth): ?array {
+    $eph = openssl_pkey_new(['curve_name' => 'prime256v1', 'private_key_type' => OPENSSL_KEYTYPE_EC]); if (!$eph) { return null; }
+    $d = openssl_pkey_get_details($eph)['ec'];
+    $asPub = "\x04" . str_pad($d['x'], 32, "\0", STR_PAD_LEFT) . str_pad($d['y'], 32, "\0", STR_PAD_LEFT);
+    $der = hex2bin('3059301306072a8648ce3d020106082a8648ce3d030107034200') . $uaPub;
+    $peer = "-----BEGIN PUBLIC KEY-----\n" . chunk_split(base64_encode($der), 64, "\n") . "-----END PUBLIC KEY-----\n";
+    $secret = openssl_pkey_derive($peer, $eph, 32); if ($secret === false) { return null; }
+    $ikm = hash_hkdf('sha256', $secret, 32, "WebPush: info\0" . $uaPub . $asPub, $auth);
+    $salt = random_bytes(16);
+    $cek = hash_hkdf('sha256', $ikm, 16, "Content-Encoding: aes128gcm\0", $salt);
+    $nonce = hash_hkdf('sha256', $ikm, 12, "Content-Encoding: nonce\0", $salt);
+    $ct = openssl_encrypt($payload . "\x02", 'aes-128-gcm', $cek, OPENSSL_RAW_DATA, $nonce, $tag, '', 16);
+    if ($ct === false) { return null; }
+    return ['body' => $salt . pack('N', 4096) . chr(65) . $asPub . $ct . $tag];
+}
+function pushSendOne(PDO $pdo, array $sub, string $json): int {
+    [$pem, $pub] = pushKeys($pdo);
+    $enc = pushEncrypt($json, b64ud((string)$sub['p256dh']), b64ud((string)$sub['auth'])); if (!$enc) { return 0; }
+    $u = parse_url((string)$sub['endpoint']); if (empty($u['scheme']) || empty($u['host'])) { return 0; }
+    $aud = $u['scheme'] . '://' . $u['host'] . (isset($u['port']) ? ':' . $u['port'] : '');
+    $in = b64u(json_encode(['typ' => 'JWT', 'alg' => 'ES256'])) . '.' . b64u(json_encode(['aud' => $aud, 'exp' => time() + 43200, 'sub' => 'https://www.watchcotedivoire.com']));
+    if (!openssl_sign($in, $der, $pem, OPENSSL_ALGO_SHA256)) { return 0; }
+    $jwt = $in . '.' . b64u(derToRaw($der));
+    $ch = curl_init((string)$sub['endpoint']);
+    curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_POSTFIELDS => $enc['body'], CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 8,
+        CURLOPT_HTTPHEADER => ['Content-Encoding: aes128gcm', 'Content-Type: application/octet-stream', 'TTL: 86400', 'Urgency: high', 'Authorization: vapid t=' . $jwt . ', k=' . $pub]]);
+    curl_exec($ch); $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
+    return $code;
+}
+function pushSend(PDO $pdo, string $title, string $body, string $tag = ''): int {
+    if (!function_exists('curl_init') || !function_exists('openssl_pkey_derive')) { return 0; }
+    $ok = 0; $json = json_encode(['title' => $title, 'body' => $body, 'url' => './', 'tag' => $tag], JSON_UNESCAPED_UNICODE);
+    foreach ($pdo->query("SELECT k,v FROM settings WHERE k LIKE 'pushsub:%'")->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $sub = json_decode((string)$row['v'], true); if (!is_array($sub)) { continue; }
+        $code = pushSendOne($pdo, $sub, $json);
+        if ($code >= 200 && $code < 300) { $ok++; } elseif ($code === 404 || $code === 410) { $pdo->prepare('DELETE FROM settings WHERE k=?')->execute([$row['k']]); }
+    }
+    return $ok;
+}
+function pushOrderText(array $o): string {
+    $n = 0; $tot = 0.0; foreach ((array)($o['items'] ?? []) as $i) { $n += (int)($i['qty'] ?? 0); $tot += (int)($i['qty'] ?? 0) * (float)($i['price'] ?? 0); }
+    $tot -= (float)($o['disc'] ?? 0);
+    return trim((string)($o['customer'] ?? 'Client')) . ' · ' . $n . ' article' . ($n > 1 ? 's' : '') . ' · ' . number_format($tot, 0, ',', ' ') . ' F';
+}
+function wooEnsureHooks(PDO $pdo, array $c): array {
+    if (setting($pdo, 'woo_hooks') === '1') { return ['ok' => true, 'already' => true]; }
+    $sec = setting($pdo, 'woo_hook_secret'); if (!$sec) { $sec = bin2hex(random_bytes(16)); setSetting($pdo, 'woo_hook_secret', $sec); }
+    $proto = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $dir = rtrim(str_replace('\\', '/', dirname((string)($_SERVER['SCRIPT_NAME'] ?? '/api.php'))), '/');
+    $url = $proto . '://' . ($_SERVER['HTTP_HOST'] ?? '') . $dir . '/api.php?r=woo_hook';
+    foreach (wooReq($c, 'GET', 'webhooks?per_page=100&status=all') as $h) { if (strpos((string)($h['delivery_url'] ?? ''), 'r=woo_hook') !== false) { wooReq($c, 'DELETE', 'webhooks/' . (int)$h['id'] . '?force=true'); } }
+    foreach (['order.created' => 'Watch CI : nouvelle commande', 'order.updated' => 'Watch CI : commande modifiée'] as $topic => $name) {
+        wooReq($c, 'POST', 'webhooks', ['name' => $name, 'topic' => $topic, 'delivery_url' => $url, 'secret' => $sec, 'status' => 'active']);
+    }
+    setSetting($pdo, 'woo_hooks', '1');
+    return ['ok' => true];
+}
+
 /* Commandes du site -> outil : création, stock, annulation */
 function wooImportOrders(PDO $pdo, array $c): array {
     $res = ['new' => 0, 'cancelled' => 0, 'notes' => []];
@@ -773,10 +861,13 @@ function wooImportOrders(PDO $pdo, array $c): array {
         $oid = 'o' . base_convert((string)(time() * 1000 + $res['new']), 10, 36) . substr(bin2hex(random_bytes(2)), 0, 3);
         $pdo->prepare('INSERT INTO orders(id,data,updated) VALUES(?,?,?)')->execute([$oid, json_encode($doc, JSON_UNESCAPED_UNICODE), time()]);
         $adjust($dec);
+        $res['lines'][] = pushOrderText($doc);
         setSetting($pdo, $mapKey, $oid);
         $res['new']++;
     }
     setSetting($pdo, 'woo_ord_busy', '0');
+    foreach (($res['lines'] ?? []) as $ln) { try { pushSend($pdo, 'Nouvelle commande du site', $ln); } catch (Throwable $e) { } }
+    unset($res['lines']);
     return $res;
 }
 
@@ -817,9 +908,12 @@ switch ($r) {
             $old = json_decode((string)$s->fetchColumn(), true);
             if (is_array($old) && !empty($old['photo']) && ($d['photo'] ?? '') !== $old['photo']) { dropPhoto($pdo, (string)$old['photo'], $id); }
         }
+        $isNew = false;
+        if ($c === 'orders') { $q0 = $pdo->prepare('SELECT 1 FROM orders WHERE id=?'); $q0->execute([$id]); $isNew = $q0->fetchColumn() === false; }
         $json = json_encode($d, JSON_UNESCAPED_UNICODE);
         if (strlen($json) > 200000) { fail('Document trop volumineux.'); }
         $pdo->prepare("INSERT INTO $c(id,data,updated) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data, updated=excluded.updated")->execute([$id, $json, time()]);
+        if ($isNew) { try { pushSend($pdo, 'Nouvelle commande · ' . (string)($d['channel'] ?? 'Outil'), pushOrderText($d)); } catch (Throwable $e) { } }
         out(['ok' => true]);
     }
 
@@ -1228,6 +1322,41 @@ switch ($r) {
             $done++;
         }
         out(['ok' => true, 'updated' => $done, 'created' => $created, 'notes' => $notes]);
+    }
+
+    case 'push_key': {
+        [, $pub] = pushKeys($pdo);
+        $n = (int)$pdo->query("SELECT COUNT(*) FROM settings WHERE k LIKE 'pushsub:%'")->fetchColumn();
+        out(['key' => $pub, 'devices' => $n, 'hooks' => setting($pdo, 'woo_hooks') === '1', 'woo' => wooCfg($pdo)['key'] !== '']);
+    }
+
+    case 'push_sub': {
+        if (!$isPost) { fail('POST requis.', 405); }
+        $sub = (array)(body()['sub'] ?? []); $k = (array)($sub['keys'] ?? []);
+        if (empty($sub['endpoint']) || empty($k['p256dh']) || empty($k['auth']) || strncmp((string)$sub['endpoint'], 'https://', 8) !== 0) { fail('Abonnement invalide.'); }
+        setSetting($pdo, 'pushsub:' . md5((string)$sub['endpoint']), json_encode(['endpoint' => (string)$sub['endpoint'], 'p256dh' => (string)$k['p256dh'], 'auth' => (string)$k['auth']]));
+        out(['ok' => true]);
+    }
+
+    case 'push_off': {
+        if (!$isPost) { fail('POST requis.', 405); }
+        $ep = (string)(body()['endpoint'] ?? '');
+        $pdo->prepare('DELETE FROM settings WHERE k=?')->execute(['pushsub:' . md5($ep)]);
+        out(['ok' => true]);
+    }
+
+    case 'push_test': {
+        if (!$isPost) { fail('POST requis.', 405); }
+        session_write_close();
+        out(['sent' => pushSend($pdo, 'Watch CI', 'Les notifications fonctionnent ✅')]);
+    }
+
+    case 'push_hooks': {
+        if (!$isPost) { fail('POST requis.', 405); }
+        session_write_close();
+        $c = wooCfg($pdo);
+        if ($c['url'] === '' || $c['key'] === '' || $c['secret'] === '') { out(['skipped' => true]); }
+        out(wooEnsureHooks($pdo, $c));
     }
 
     case 'woo_orders': {
