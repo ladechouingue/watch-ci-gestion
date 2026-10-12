@@ -222,14 +222,36 @@ function wooUpdate(PDO $pdo, array $c, array $g, array $x, array $cats, array $t
     $catPart = $ids ? ['categories' => array_map(function ($i) { return ['id' => $i]; }, $ids)] : [];
     $ph = wooPhoto($g); if ($ph) { $catPart['images'] = $ph; }
     if ($x['type'] === 'variable' && $x['vars']) {
-        foreach ($x['vars'] as $v) {
-            $vn = wooNums($v['label']); $stock = null;
-            foreach ($g['sizes'] as $sz => $st) { $tn = wooNums((string)$sz); if ($vn && !array_diff($vn, $tn)) { $stock = $st; break; } }
-            if ($stock === null) { $notes[] = $g['name'] . ' · « ' . $v['label'] . ' » : taille non trouvée dans l\'outil'; continue; }
-            wooReq($c, 'PUT', 'products/' . $wid . '/variations/' . $v['id'], ['manage_stock' => true, 'stock_quantity' => max(0, (int)$stock), 'regular_price' => $price]);
+        $lab = function ($k) { return $k === '' ? 'Unique' : $k . ' mm'; };
+        $key = function (string $t) { $a = wooNums($t); sort($a); return implode('/', $a); };
+        $used = []; $assign = [];
+        foreach ($g['sizes'] as $sz => $st) {
+            foreach ($x['vars'] as $v) { if (!isset($used[$v['id']]) && $key($v['label']) === $key((string)$sz) && $key($v['label']) !== '') { $used[$v['id']] = 1; $assign[(string)$sz] = $v['id']; break; } }
+        }
+        foreach ($g['sizes'] as $sz => $st) {
+            if (isset($assign[(string)$sz])) { continue; }
+            foreach ($x['vars'] as $v) { $vn = wooNums($v['label']); if (!isset($used[$v['id']]) && $vn && !array_diff($vn, wooNums((string)$sz))) { $used[$v['id']] = 1; $assign[(string)$sz] = $v['id']; break; } }
+        }
+        /* L'outil fait foi : les tailles absentes de l'outil sont retirées du site, les tailles manquantes sont ajoutées */
+        $full = wooReq($c, 'GET', 'products/' . $wid . '?_fields=attributes');
+        $attrs = (array)($full['attributes'] ?? []); $ai = -1;
+        foreach ($attrs as $k => $a) { if (!empty($a['variation'])) { $ai = $k; break; } }
+        $aName = $ai >= 0 ? (string)$attrs[$ai]['name'] : 'Taille'; $aId = $ai >= 0 ? (int)($attrs[$ai]['id'] ?? 0) : 0;
+        $opts = array_map($lab, array_keys($g['sizes']));
+        $newAttr = ['name' => $aName, 'visible' => true, 'variation' => true, 'options' => array_values($opts)] + ($aId ? ['id' => $aId] : []);
+        if ($ai >= 0) { $attrs[$ai] = $newAttr; } else { $attrs[] = $newAttr; }
+        $catPart['attributes'] = array_map(function ($a) { if (isset($a['options'])) { $a['options'] = array_values((array)$a['options']); } return $a; }, $attrs);
+        wooReq($c, 'PUT', 'products/' . $wid, $catPart);
+        $batch = ['update' => [], 'create' => [], 'delete' => []];
+        foreach ($g['sizes'] as $sz => $st) {
+            $data = ['manage_stock' => true, 'stock_quantity' => max(0, (int)$st), 'regular_price' => $price];
+            if (isset($assign[(string)$sz])) { $batch['update'][] = ['id' => $assign[(string)$sz]] + $data; }
+            else { $batch['create'][] = $data + ['attributes' => [($aId ? ['id' => $aId] : ['name' => $aName]) + ['option' => $lab((string)$sz)]]]; }
             $n++;
         }
-        if ($catPart) { wooReq($c, 'PUT', 'products/' . $wid, $catPart); }
+        foreach ($x['vars'] as $v) { if (!isset($used[$v['id']])) { $batch['delete'][] = $v['id']; } }
+        $batch = array_filter($batch);
+        if ($batch) { wooReq($c, 'POST', 'products/' . $wid . '/variations/batch', $batch); }
     } else {
         wooReq($c, 'PUT', 'products/' . $wid, ['manage_stock' => true, 'stock_quantity' => max(0, (int)array_sum($g['sizes'])), 'regular_price' => $price] + $catPart);
         $n++;
