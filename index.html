@@ -187,7 +187,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=76;
+var PAGE_V=77;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -423,6 +423,7 @@ function closeSheet(){$("#layer").innerHTML=""}
 document.addEventListener("keydown",function(e){if(e.key==="Escape"){if($("#pk_bd"))closePicker();else closeSheet()}if(e.key==="Enter"&&e.target.id==="pw"){e.preventDefault();var b=$("[data-act=login],[data-act=setup]");if(b)b.click()}});
 
 /* ---------- Catalogues PDF ---------- */
+var CLI=[["38","38 mm"],["40","40 mm"],["41","41 mm"],["42","42 mm"],["42s10","42 mm série 10"],["44","44 mm"],["45","45 mm"],["46","46 mm"],["49","49 mm"]];
 function catSize(n){return (n/1048576).toFixed(1).replace(".",",")+" Mo"}
 function catSheet(msg){
   openSheet('<h2>Catalogues</h2><div class="empty">'+esc(msg||"Chargement…")+'</div>');
@@ -435,7 +436,7 @@ function catSheet(msg){
         '<button class="btn small" data-act="catshare" data-f="'+fe+'" data-l="'+le+'">Partager</button>'+
         '<span class="grow"></span><button class="btn small danger" data-act="catdel" data-f="'+fe+'" data-confirm="Supprimer ?">Supprimer</button></div></div>'
     }).join(""):'<div class="empty">Aucun catalogue pour le moment.</div>';
-    openSheet('<h2>Catalogues</h2><div class="list">'+rows+'</div>'+
+    openSheet('<h2>Catalogues</h2><div class="card" style="display:flex;flex-direction:column;gap:8px"><h3>Catalogue pour un client</h3><p class="s" style="color:var(--muted)">Choisissez la taille de sa montre : bracelets 5 000 F, bracelets 10 000 F, coques et antichocs en stock, dans un seul PDF toujours à jour.</p><div class="row" style="flex-wrap:wrap;gap:8px">'+CLI.map(function(z){return '<button class="btn" data-act="catcli" data-k="'+z[0]+'">'+z[1]+'</button>'}).join("")+'</div></div><div class="list">'+rows+'</div>'+
       '<div class="card" style="display:flex;flex-direction:column;gap:8px"><h3>Ajouter un catalogue</h3>'+
       '<label class="f">Nom<input id="c_label" type="text" placeholder="Ex. 42/44/45/46/49 MM · 5 000 F"></label>'+
       '<label class="f">Fichier PDF<input id="c_file" type="file" accept="application/pdf,.pdf"></label>'+
@@ -827,6 +828,10 @@ document.addEventListener("click",function(e){
     case "cats":catSheet();break;
     case "catshare":shareCat(b.dataset.f,b.dataset.l);break;
     case "catdel":api("cat_delete",{file:b.dataset.f}).then(function(){toast("Catalogue supprimé.");catSheet()}).catch(function(e){toast(e.message)});break;
+    case "catcli":{var k=b.dataset.k,zl=(CLI.filter(function(z){return z[0]===k})[0]||[0,k])[1];b.disabled=true;toast("Préparation du catalogue…");
+      api("cat_client",{k:k}).then(function(j){var f="../catalogues-client/"+j.file+"?v="+j.v,l="client "+zl,fe=esc(f);
+        openSheet('<h2>Catalogue '+esc(zl)+'</h2><p class="s" style="color:var(--muted)">'+j.n+' article'+(j.n>1?'s':'')+' en stock. Généré à l\'instant.</p><div class="row catacts"><a class="btn primary" href="uploads/catalogues-client/'+j.file+'?v='+j.v+'" target="_blank" rel="noopener">Ouvrir</a><button class="btn" data-act="catlink" data-f="'+fe+'">Lien</button><button class="btn" data-act="catshare" data-f="'+fe+'" data-l="'+esc(l)+'">Partager</button></div><div class="row"><button class="btn" data-act="cats">Retour</button><span class="grow"></span><button class="btn" data-act="close">Fermer</button></div>')
+      }).catch(function(e){b.disabled=false;toast(e.message)});break}
     case "catadd":addCat(b);break;
     case "catlink":copyCatLink(b.dataset.f);break;
     case "catren":{var it=b.closest(".item"),hd=it.firstChild;

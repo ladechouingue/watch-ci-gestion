@@ -556,6 +556,130 @@ function buildInvoice(array $o, string $num, array $biz = []): string {
     return $out . "trailer\n<< /Size $mx /Root 1 0 R >>\nstartxref\n$xr\n%%EOF";
 }
 
+function catPhotoJpeg(string $photo): ?array {
+    if (!function_exists('imagecreatefromstring')) { return null; }
+    $fs = photoFiles($photo); if (!$fs) { return null; }
+    foreach ([$fs[1], $fs[0]] as $f) {
+        if (!is_file($f)) { continue; }
+        $im = @imagecreatefromstring((string)file_get_contents($f)); if (!$im) { continue; }
+        $w = imagesx($im); $h = imagesy($im); $k = min(1, 420 / max($w, $h));
+        $nw = max(1, (int)round($w * $k)); $nh = max(1, (int)round($h * $k));
+        $d = imagecreatetruecolor($nw, $nh); imagefill($d, 0, 0, imagecolorallocate($d, 255, 255, 255));
+        imagecopyresampled($d, $im, 0, 0, 0, 0, $nw, $nh, $w, $h);
+        ob_start(); imagejpeg($d, null, 80); $bin = (string)ob_get_clean();
+        imagedestroy($im); imagedestroy($d);
+        return ['bin' => $bin, 'w' => $nw, 'h' => $nh];
+    }
+    return null;
+}
+
+/* Catalogue client : bracelets 5 000 F / 10 000 F + coques + antichocs en stock pour une taille de montre */
+function catClientSizes(): array {
+    return ['38' => ['38', 'A'], '40' => ['40', 'A'], '41' => ['41', 'A'], '42' => ['42', 'A'], '42s10' => ['42', 'B'], '44' => ['44', 'B'], '45' => ['45', 'B'], '46' => ['46', 'B'], '49' => ['49', 'B']];
+}
+function catClientSections(PDO $pdo, string $n, string $grp): array {
+    $br5 = []; $br10 = []; $co = []; $ac = [];
+    foreach (load($pdo, 'products') as $p) {
+        if ((int)($p['stock'] ?? 0) <= 0) { continue; }
+        $cat = (string)($p['category'] ?? ''); $cat = strpos($cat, '|') !== false ? explode('|', $cat)[0] : $cat;
+        $szRaw = preg_replace('/\s+/', '', (string)($p['size'] ?? '')); $nums = wooNums($szRaw);
+        $price = (int)wooPrice((float)($p['price'] ?? 0));
+        $g = (string)($p['g'] ?? $p['id']);
+        $m = ['name' => (string)($p['name'] ?? ''), 'color' => (string)($p['color'] ?? ''), 'photo' => (string)($p['photo'] ?? ''), 'price' => $price];
+        if ($cat === 'Bracelet' || $cat === 'Bracelet femme') {
+            if (count($nums) > 1) { $ok = $grp === 'A' ? in_array('38', $nums, true) : in_array('44', $nums, true); }
+            else { $ok = in_array($n, $nums, true); }
+            if (!$ok) { continue; }
+            if ($price >= 10000) { $br10[$g] = $m; } else { $br5[$g] = $m; }
+        } elseif ($cat === 'Coque' || $cat === 'Antichoc') {
+            if (!($szRaw === '' || in_array($n, $nums, true))) { continue; }
+            if ($cat === 'Coque') { $co[$g] = $m; } else { $ac[$g] = $m; }
+        }
+    }
+    $sort = function (array $a) { $a = array_values($a); usort($a, function ($x, $y) { return strcasecmp($x['name'] . $x['color'], $y['name'] . $y['color']); }); return $a; };
+    return [
+        ['title' => 'Bracelets 5 000 F', 'foot' => '5 000 F l\'unité  |  3 bracelets pour 10 000 FCFA', 'models' => $sort($br5), 'price' => false],
+        ['title' => 'Bracelets 10 000 F', 'foot' => '10 000 FCFA l\'unité  |  2 bracelets pour 15 000 FCFA', 'models' => $sort($br10), 'price' => false],
+        ['title' => 'Coques', 'foot' => 'Coques de protection', 'models' => $sort($co), 'price' => true],
+        ['title' => 'Antichocs', 'foot' => 'Protections antichoc', 'models' => $sort($ac), 'price' => true],
+    ];
+}
+function buildCatalogueClient(array $sections, string $watch, ?array $logo): string {
+    $W = 595; $H = 842; $org = '0.87 0.39 0.06'; $dark = '0.09 0.11 0.1';
+    $pages = [];
+    $mk = function () use (&$pages) { $o = new stdClass(); $o->c = ''; $pages[] = $o; return $o; };
+    $T = function (stdClass $pg, float $x, float $y, string $t, float $sz = 10, bool $b = false, string $al = 'l', string $col = '0.1 0.13 0.11') use ($H) {
+        if ($al === 'r') { $x -= pdfW($t, $b, $sz); } elseif ($al === 'c') { $x -= pdfW($t, $b, $sz) / 2; }
+        $pg->c .= "BT /" . ($b ? 'F2' : 'F1') . " $sz Tf $col rg 1 0 0 1 " . round($x, 2) . ' ' . round($H - $y, 2) . ' Tm (' . pdfStr($t) . ") Tj ET\n";
+    };
+    $R = function (stdClass $pg, float $x, float $y, float $w, float $h, string $col) use ($H) { $pg->c .= "$col rg " . round($x, 2) . ' ' . round($H - $y - $h, 2) . " $w $h re f\n"; };
+    $I = function (stdClass $pg, string $name, array $im, float $x, float $y, float $bw, float $bh) use ($H) {
+        $k = min($bw / $im['w'], $bh / $im['h']); $dw = round($im['w'] * $k, 2); $dh = round($im['h'] * $k, 2);
+        $pg->c .= "q $dw 0 0 $dh " . round($x + ($bw - $dw) / 2, 2) . ' ' . round($H - $y - $bh + ($bh - $dh) / 2, 2) . " cm /$name Do Q\n";
+    };
+    $total = 0; foreach ($sections as $s) { $total += count($s['models']); }
+    $p = $mk(); $R($p, 0, 0, $W, $H, $dark);
+    if ($logo) { $R($p, 48, 56, 84, 84, '1 1 1'); $I($p, 'Lg', $logo, 54, 62, 72, 72); }
+    $T($p, 48, 330, 'Watch Côte d\'Ivoire', 14, true, 'l', $org);
+    $T($p, 48, 392, 'Catalogue', 52, true, 'l', '1 1 1');
+    $T($p, 48, 428, 'Pour Apple Watch ' . $watch, 22, false, 'l', '1 1 1');
+    $R($p, 0, 500, $W, 30 + 24 * count(array_filter($sections, function ($s) { return $s['models']; })), $org);
+    $yy = 532; foreach ($sections as $s) { if (!$s['models']) { continue; } $T($p, 48, $yy + 12, $s['title'] . '  ·  ' . count($s['models']) . ' modèle' . (count($s['models']) > 1 ? 's' : ''), 14, true, 'l', '1 1 1'); $yy += 24; }
+    $T($p, 48, 720, 'Seuls les articles en stock sont présentés · mis à jour le ' . date('d/m/Y'), 10, false, 'l', '0.75 0.78 0.76');
+    $T($p, 48, 760, 'WhatsApp 01 02 99 09 66', 14, true, 'l', '1 1 1');
+    $T($p, 48, 782, 'www.watchcotedivoire.com', 11, false, 'l', '0.75 0.78 0.76');
+    $cw = 247; $ch = 339; $photoN = 0; $objImgs = [];
+    foreach ($sections as $s) {
+        $n = 0; $pg = null;
+        foreach ($s['models'] as $m) {
+            if ($n % 4 === 0) {
+                $pg = $mk();
+                $R($pg, 0, 0, $W, 64, $org);
+                $T($pg, 40, 40, $s['title'], 20, true, 'l', '1 1 1'); $T($pg, 555, 40, 'Apple Watch ' . $watch, 11, false, 'r', '1 1 1');
+                $R($pg, 0, 792, $W, 50, $dark);
+                $T($pg, 40, 813, $s['foot'], 10, true, 'l', '1 1 1'); $T($pg, 555, 813, 'WhatsApp 01 02 99 09 66', 10, true, 'r', $org);
+                $T($pg, 40, 830, 'www.watchcotedivoire.com', 8, false, 'l', '0.75 0.78 0.76');
+            }
+            $i = $n % 4; $x = 40 + ($i % 2) * ($cw + 1); $y = 80 + intdiv($i, 2) * ($ch + 14);
+            $R($pg, $x, $y, $cw, $ch, '0.95 0.96 0.95'); $R($pg, $x, $y, $cw, 247, '1 1 1');
+            $ph = $m['photo'] !== '' ? catPhotoJpeg($m['photo']) : null;
+            if ($ph) { $nm = 'P' . (++$photoN); $objImgs[$nm] = $ph; $I($pg, $nm, $ph, $x + 4, $y + 4, $cw - 8, 239); $pg->c .= ''; $pg->im = ($pg->im ?? []) + [$nm => 1]; }
+            else { $T($pg, $x + $cw / 2, $y + 126, 'Photo à venir', 10, false, 'c', '0.6 0.63 0.61'); }
+            $R($pg, $x, $y, 30, 24, $org); $T($pg, $x + 15, $y + 17, (string)($n + 1), 11, true, 'c', '1 1 1');
+            $T($pg, $x + 12, $y + 272, pdfFit($m['name'], true, 12, $cw - 24), 12, true);
+            if ($m['color'] !== '') { $T($pg, $x + 12, $y + 291, pdfFit($m['color'], false, 10, $cw - 24), 10, false, 'l', '0.4 0.45 0.42'); }
+            if ($s['price']) { $T($pg, $x + 12, $y + 318, number_format($m['price'], 0, ',', ' ') . ' F', 13, true, 'l', $org); }
+            else { $T($pg, $x + 12, $y + 318, 'Disponible', 10, true, 'l', $org); }
+            $n++;
+        }
+    }
+    $objs = [1 => '', 2 => '', 3 => '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>', 4 => '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>'];
+    $num = 5; $xo = [];
+    $addImg = function (array $im) use (&$objs, &$num): int {
+        $k = $num++;
+        $objs[$k] = "<< /Type /XObject /Subtype /Image /Width {$im['w']} /Height {$im['h']} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length " . strlen($im['bin']) . " >>\nstream\n" . $im['bin'] . "\nendstream";
+        return $k;
+    };
+    if ($logo) { $xo['Lg'] = $addImg($logo); }
+    foreach ($objImgs as $nm => $im) { $xo[$nm] = $addImg($im); }
+    $xs = ''; foreach ($xo as $nm => $k) { $xs .= "/$nm $k 0 R "; }
+    $kids = [];
+    foreach ($pages as $pg) {
+        $cn = $num++; $pn = $num++;
+        $objs[$cn] = "<< /Length " . strlen($pg->c) . " >>\nstream\n" . $pg->c . "endstream";
+        $objs[$pn] = "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 $W $H] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> /XObject << $xs>> >> /Contents $cn 0 R >>";
+        $kids[] = "$pn 0 R";
+    }
+    $objs[1] = '<< /Type /Catalog /Pages 2 0 R >>'; $objs[2] = '<< /Type /Pages /Kids [' . implode(' ', $kids) . '] /Count ' . count($kids) . ' >>';
+    ksort($objs);
+    $out = "%PDF-1.4\n"; $off = [];
+    foreach ($objs as $k => $v) { $off[$k] = strlen($out); $out .= "$k 0 obj\n$v\nendobj\n"; }
+    $xr = strlen($out); $mx = max(array_keys($objs)) + 1;
+    $out .= "xref\n0 $mx\n0000000000 65535 f \n";
+    for ($k = 1; $k < $mx; $k++) { $out .= sprintf("%010d 00000 n \n", $off[$k]); }
+    return $out . "trailer\n<< /Size $mx /Root 1 0 R >>\nstartxref\n$xr\n%%EOF";
+}
+
 switch ($r) {
     case 'state':
         $bkTo = (string)(setting($pdo, 'bk_email') ?? '');
@@ -733,6 +857,22 @@ switch ($r) {
             if (function_exists('opcache_invalidate')) { @opcache_invalidate($dest, true); }
         }
         out(['ok' => true, 'version' => localVersion()]);
+    }
+
+
+    case 'cat_client': {
+        if (!$isPost) { fail('POST requis.', 405); }
+        $k = (string)(body()['k'] ?? ''); $defs = catClientSizes();
+        if (!isset($defs[$k])) { fail('Taille inconnue.'); }
+        @ini_set('memory_limit', '512M'); @set_time_limit(120);
+        [$n, $grp] = $defs[$k];
+        $secs = catClientSections($pdo, $n, $grp); $cnt = 0; foreach ($secs as $s) { $cnt += count($s['models']); }
+        if ($cnt === 0) { fail('Aucun article en stock pour cette taille.'); }
+        $lg = logoJpeg();
+        $pdf = buildCatalogueClient($secs, $k === '42s10' ? '42 mm (série 10)' : $n . ' mm', $lg);
+        $dir = $upDir . '/catalogues-client'; if (!is_dir($dir)) { @mkdir($dir, 0755, true); }
+        if (file_put_contents($dir . '/' . $k . '.pdf', $pdf) === false) { fail('Écriture impossible dans le dossier uploads.', 500); }
+        out(['ok' => true, 'file' => $k . '.pdf', 'n' => $cnt, 'v' => time()]);
     }
 
     case 'catalogues': {
