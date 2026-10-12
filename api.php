@@ -604,6 +604,19 @@ function catClientSections(PDO $pdo, string $n, string $grp): array {
         ['title' => 'Antichocs', 'foot' => 'Protections antichoc', 'models' => $sort($ac), 'price' => true],
     ];
 }
+function logoAlpha(): ?array {
+    if (!function_exists('imagecreatefrompng') || !is_file(__DIR__ . '/logo.png')) { return null; }
+    $im = @imagecreatefrompng(__DIR__ . '/logo.png'); if (!$im) { return null; }
+    $w0 = imagesx($im); $h0 = imagesy($im); $k = min(1, 520 / max($w0, $h0));
+    $w = max(1, (int)round($w0 * $k)); $h = max(1, (int)round($h0 * $k));
+    $d = imagecreatetruecolor($w, $h); imagealphablending($d, false); imagesavealpha($d, true);
+    imagefill($d, 0, 0, imagecolorallocatealpha($d, 0, 0, 0, 127));
+    imagecopyresampled($d, $im, 0, 0, 0, 0, $w, $h, $w0, $h0);
+    $rgb = ''; $a = '';
+    for ($y = 0; $y < $h; $y++) { for ($x = 0; $x < $w; $x++) { $c = imagecolorat($d, $x, $y); $rgb .= chr(($c >> 16) & 255) . chr(($c >> 8) & 255) . chr($c & 255); $a .= chr(255 - (int)round((($c >> 24) & 127) * 255 / 127)); } }
+    imagedestroy($im); imagedestroy($d);
+    return ['bin' => gzcompress($rgb, 6), 'mask' => gzcompress($a, 6), 'w' => $w, 'h' => $h, 'flate' => true];
+}
 function buildCatalogueClient(array $sections, string $watch, ?array $logo): string {
     $W = 595; $H = 842; $org = '0.87 0.39 0.06'; $dark = '0.09 0.11 0.1';
     $pages = [];
@@ -619,15 +632,16 @@ function buildCatalogueClient(array $sections, string $watch, ?array $logo): str
     };
     $total = 0; foreach ($sections as $s) { $total += count($s['models']); }
     $p = $mk(); $R($p, 0, 0, $W, $H, $dark);
-    if ($logo) { $R($p, 48, 56, 84, 84, '1 1 1'); $I($p, 'Lg', $logo, 54, 62, 72, 72); }
-    $T($p, 48, 330, 'Watch Côte d\'Ivoire', 14, true, 'l', $org);
-    $T($p, 48, 392, 'Catalogue', 52, true, 'l', '1 1 1');
-    $T($p, 48, 428, 'Pour Apple Watch ' . $watch, 22, false, 'l', '1 1 1');
-    $R($p, 0, 500, $W, 30 + 24 * count(array_filter($sections, function ($s) { return $s['models']; })), $org);
-    $yy = 532; foreach ($sections as $s) { if (!$s['models']) { continue; } $T($p, 48, $yy + 12, $s['title'] . '  ·  ' . count($s['models']) . ' modèle' . (count($s['models']) > 1 ? 's' : ''), 14, true, 'l', '1 1 1'); $yy += 24; }
-    $T($p, 48, 720, 'Seuls les articles en stock sont présentés · mis à jour le ' . date('d/m/Y'), 10, false, 'l', '0.75 0.78 0.76');
-    $T($p, 48, 760, 'WhatsApp 01 02 99 09 66', 14, true, 'l', '1 1 1');
-    $T($p, 48, 782, 'www.watchcotedivoire.com', 11, false, 'l', '0.75 0.78 0.76');
+    if ($logo) { $I($p, 'Lg', $logo, 148, 44, 300, 300); }
+    $T($p, 297.5, 388, 'Watch Côte d\'Ivoire', 14, true, 'c', $org);
+    $T($p, 297.5, 446, 'Catalogue', 48, true, 'c', '1 1 1');
+    $T($p, 297.5, 480, 'Pour Apple Watch ' . $watch, 20, false, 'c', '1 1 1');
+    $nb = count(array_filter($sections, function ($s) { return $s['models']; }));
+    $R($p, 0, 520, $W, 32 + 24 * $nb, $org);
+    $yy = 552; foreach ($sections as $s) { if (!$s['models']) { continue; } $T($p, 297.5, $yy, $s['title'] . '  ·  ' . count($s['models']) . ' modèle' . (count($s['models']) > 1 ? 's' : ''), 14, true, 'c', '1 1 1'); $yy += 24; }
+    $T($p, 297.5, 728, 'Seuls les articles en stock sont présentés · mis à jour le ' . date('d/m/Y'), 10, false, 'c', '0.75 0.78 0.76');
+    $T($p, 297.5, 768, 'WhatsApp 01 02 99 09 66', 14, true, 'c', '1 1 1');
+    $T($p, 297.5, 790, 'www.watchcotedivoire.com', 11, false, 'c', '0.75 0.78 0.76');
     $cw = 247; $ch = 339; $photoN = 0; $objImgs = [];
     foreach ($sections as $s) {
         $n = 0; $pg = null;
@@ -656,8 +670,10 @@ function buildCatalogueClient(array $sections, string $watch, ?array $logo): str
     $objs = [1 => '', 2 => '', 3 => '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>', 4 => '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>'];
     $num = 5; $xo = [];
     $addImg = function (array $im) use (&$objs, &$num): int {
-        $k = $num++;
-        $objs[$k] = "<< /Type /XObject /Subtype /Image /Width {$im['w']} /Height {$im['h']} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length " . strlen($im['bin']) . " >>\nstream\n" . $im['bin'] . "\nendstream";
+        $sm = '';
+        if (!empty($im['mask'])) { $mk2 = $num++; $objs[$mk2] = "<< /Type /XObject /Subtype /Image /Width {$im['w']} /Height {$im['h']} /ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode /Length " . strlen($im['mask']) . " >>\nstream\n" . $im['mask'] . "\nendstream"; $sm = " /SMask $mk2 0 R"; }
+        $k = $num++; $flt = !empty($im['flate']) ? 'FlateDecode' : 'DCTDecode';
+        $objs[$k] = "<< /Type /XObject /Subtype /Image /Width {$im['w']} /Height {$im['h']} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /$flt$sm /Length " . strlen($im['bin']) . " >>\nstream\n" . $im['bin'] . "\nendstream";
         return $k;
     };
     if ($logo) { $xo['Lg'] = $addImg($logo); }
@@ -868,7 +884,7 @@ switch ($r) {
         [$n, $grp] = $defs[$k];
         $secs = catClientSections($pdo, $n, $grp); $cnt = 0; foreach ($secs as $s) { $cnt += count($s['models']); }
         if ($cnt === 0) { fail('Aucun article en stock pour cette taille.'); }
-        $lg = logoJpeg();
+        $lg = logoAlpha() ?: logoJpeg();
         $pdf = buildCatalogueClient($secs, $k === '42s10' ? '42 mm (série 10)' : $n . ' mm', $lg);
         $dir = $upDir . '/catalogues-client'; if (!is_dir($dir)) { @mkdir($dir, 0755, true); }
         if (file_put_contents($dir . '/' . $k . '.pdf', $pdf) === false) { fail('Écriture impossible dans le dossier uploads.', 500); }
