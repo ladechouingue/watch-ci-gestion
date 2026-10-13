@@ -84,17 +84,27 @@ export default function App() {
 }
 
 function Home({ onPick }) {
+  const [open, setOpen] = useState(false);
   return (
-    <ScrollView contentContainerStyle={{ padding: 20, alignItems: "center" }}>
-      <Image source={logo} style={{ width: 220, height: 110, resizeMode: "contain", marginTop: 20 }} />
+    <ScrollView contentContainerStyle={{ padding: 20, alignItems: "center" }} keyboardShouldPersistTaps="handled">
+      <Image source={logo} style={{ width: 240, height: 120, resizeMode: "contain", marginTop: 30 }} />
       <Text style={s.h1}>Quelle est la taille de ta montre ?</Text>
       <Text style={s.sub}>On te montre seulement ce qui va avec.</Text>
-      <View style={s.grid}>
-        {WATCH_SIZES.map((x) => (
-          <TouchableOpacity key={x.key} style={s.sizeBtn} onPress={() => onPick(x)}>
-            <Text style={s.sizeTxt}>{x.label}</Text>
-          </TouchableOpacity>
-        ))}
+      <View style={{ width: "100%", maxWidth: 420 }}>
+        <TouchableOpacity style={s.drop} onPress={() => setOpen(!open)} activeOpacity={0.8}>
+          <Text style={s.dropTxt}>Choisis ta taille</Text>
+          <Text style={s.dropArrow}>{open ? "▲" : "▼"}</Text>
+        </TouchableOpacity>
+        {open && (
+          <View style={s.list}>
+            {WATCH_SIZES.map((x, i) => (
+              <TouchableOpacity key={x.key} style={[s.row, i === WATCH_SIZES.length - 1 && { borderBottomWidth: 0 }]} onPress={() => onPick(x)}>
+                <Text style={s.rowTxt}>{x.label}</Text>
+                <Text style={{ color: ORANGE, fontSize: 18 }}>›</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
       </View>
     </ScrollView>
   );
@@ -251,6 +261,11 @@ const s = StyleSheet.create({
   h2: { fontSize: 18, fontWeight: "800", color: DARK, marginTop: 16, marginBottom: 6 },
   sub: { color: "#666", marginTop: 6, marginBottom: 18 },
   grid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center" },
+  drop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: "#fff", borderWidth: 2, borderColor: ORANGE, borderRadius: 14, paddingVertical: 16, paddingHorizontal: 18 },
+  dropTxt: { fontSize: 17, fontWeight: "700", color: DARK }, dropArrow: { color: ORANGE, fontSize: 16 },
+  list: { marginTop: 8, borderWidth: 1, borderColor: "#eadfd5", borderRadius: 14, backgroundColor: "#fffaf6", overflow: "hidden" },
+  row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 15, paddingHorizontal: 18, borderBottomWidth: 1, borderColor: "#f0e6dc" },
+  rowTxt: { fontSize: 16, fontWeight: "600", color: DARK },
   sizeBtn: { width: "44%", margin: "2.5%", paddingVertical: 20, borderRadius: 14, borderWidth: 2, borderColor: ORANGE, alignItems: "center" },
   sizeTxt: { fontSize: 17, fontWeight: "700", color: DARK },
   top: { flexDirection: "row", alignItems: "center", padding: 10, borderBottomWidth: 1, borderColor: "#eee" },
