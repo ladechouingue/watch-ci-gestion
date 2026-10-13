@@ -1,0 +1,24 @@
+{
+  "expo": {
+    "name": "Watch Côte d'Ivoire",
+    "slug": "watch-ci",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/logo.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.watchcotedivoire.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#FFFFFF",
+        "foregroundImage": "./assets/logo.png"
+      },
+      "package": "com.watchcotedivoire.app"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}
