@@ -802,13 +802,16 @@ function smsSend(PDO $pdo, string $number, string $text): array {
     $num = smsNumber($number); if ($num === '') { return [false, 'Numéro de téléphone invalide.']; }
     $sender = trim((string)(setting($pdo, 'sms_sender') ?? ''));
     $data = ['application_id' => $id, 'application_token' => $tk, 'number' => $num, 'text' => smsAscii($text), 'unicode' => false, 'tag' => 'watch-ci'];
-    if ($sender !== '') { $data['sender_id'] = 'gText'; $data['sender_id_value'] = mb_substr(preg_replace('/[^A-Za-z0-9 ]/', '', $sender) ?? '', 0, 11); } else { $data['sender_id'] = 'gSystem'; }
+    $mode = (string)(setting($pdo, 'sms_mode') ?? 'gSystem');
+    if ($mode === 'gText' && $sender !== '') { $data['sender_id'] = 'gText'; $data['sender_id_value'] = mb_substr(preg_replace('/[^A-Za-z0-9]/', '', $sender) ?? '', 0, 11); }
+    elseif ($mode === 'gShort') { $data['sender_id'] = 'gShort'; }
+    else { $data['sender_id'] = 'gSystem'; }
     $ch = curl_init('https://portal.bulkgate.com/api/1.0/simple/transactional');
     curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_POSTFIELDS => json_encode($data), CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 15, CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Cache-Control: no-cache']]);
     $body = curl_exec($ch); $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE); $err = curl_error($ch); curl_close($ch);
     if ($body === false) { return [false, 'BulkGate injoignable : ' . $err]; }
     $j = json_decode((string)$body, true);
-    if (is_array($j) && isset($j['data']['status']) && $j['data']['status'] === 'accepted') { return [true, 'Envoyé (crédit restant : ' . ($j['data']['credit'] ?? '?') . ')']; }
+    if (is_array($j) && isset($j['data']['status']) && $j['data']['status'] === 'accepted') { return [true, 'Accepté par BulkGate (' . $data['sender_id'] . ', n° ' . $num . ')']; }
     $m = is_array($j) ? (string)($j['error'] ?? ($j['data']['status'] ?? '')) : '';
     if ($m === '') { $m = 'code ' . $code . ' ' . mb_substr(trim(strip_tags((string)$body)), 0, 120); }
     return [false, 'BulkGate : ' . $m];
@@ -1381,7 +1384,7 @@ switch ($r) {
     }
 
     case 'sms_get': {
-        out(['on' => setting($pdo, 'sms_on') === '1', 'app' => (string)(setting($pdo, 'sms_app') ?? ''), 'hasToken' => (string)(setting($pdo, 'sms_token') ?? '') !== '', 'sender' => (string)(setting($pdo, 'sms_sender') ?? ''), 'tpl' => (string)(setting($pdo, 'sms_tpl') ?? ''), 'tool' => setting($pdo, 'sms_tool') !== '0', 'last' => (string)(setting($pdo, 'sms_last') ?? '')]);
+        out(['on' => setting($pdo, 'sms_on') === '1', 'app' => (string)(setting($pdo, 'sms_app') ?? ''), 'hasToken' => (string)(setting($pdo, 'sms_token') ?? '') !== '', 'sender' => (string)(setting($pdo, 'sms_sender') ?? ''), 'mode' => (string)(setting($pdo, 'sms_mode') ?? 'gSystem'), 'tpl' => (string)(setting($pdo, 'sms_tpl') ?? ''), 'tool' => setting($pdo, 'sms_tool') !== '0', 'last' => (string)(setting($pdo, 'sms_last') ?? '')]);
     }
 
     case 'sms_save': {
@@ -1390,6 +1393,7 @@ switch ($r) {
         setSetting($pdo, 'sms_on', !empty($b['on']) ? '1' : '0'); setSetting($pdo, 'sms_tool', !empty($b['tool']) ? '1' : '0');
         setSetting($pdo, 'sms_app', trim((string)($b['app'] ?? ''))); setSetting($pdo, 'sms_sender', mb_substr(trim((string)($b['sender'] ?? '')), 0, 11));
         setSetting($pdo, 'sms_tpl', mb_substr(trim((string)($b['tpl'] ?? '')), 0, 300));
+        $md = (string)($b['mode'] ?? 'gSystem'); setSetting($pdo, 'sms_mode', in_array($md, ['gSystem', 'gText', 'gShort'], true) ? $md : 'gSystem');
         $tk = trim((string)($b['token'] ?? '')); if ($tk !== '') { setSetting($pdo, 'sms_token', $tk); }
         out(['ok' => true]);
     }
@@ -1398,7 +1402,7 @@ switch ($r) {
         if (!$isPost) { fail('POST requis.', 405); }
         session_write_close();
         $num = (string)(body()['number'] ?? '');
-        [$ok, $msg] = smsSend($pdo, $num, smsOrderText($pdo, ['customer' => 'Test', 'items' => [['qty' => 3, 'price' => 5000]], 'disc' => 5000]));
+        [$ok, $msg] = smsSend($pdo, $num, 'TEST Watch CI ' . date('H:i') . ' - ' . smsOrderText($pdo, ['customer' => 'Test', 'items' => [['qty' => 3, 'price' => 5000]], 'disc' => 5000]));
         setSetting($pdo, 'sms_last', date('d/m H:i') . ' · test · ' . $msg);
         out(['ok' => $ok, 'msg' => $msg]);
     }
