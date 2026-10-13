@@ -187,7 +187,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=83;
+var PAGE_V=84;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -729,14 +729,6 @@ function adjustStock(items,sign){
   var list=Object.keys(agg).map(function(pid){return {pid:pid,delta:sign*agg[pid]}});
   return api("adjust",{items:list}).then(refresh);
 }
-function waMsg(o,c){
-  var n=0;(o.items||[]).forEach(function(i){n+=i.qty});
-  var first=String(o.customer||"").trim().split(/\s+/)[0]||"";
-  var hi="Bonjour"+(first?" "+first:"")+", ";
-  var tot=F(c.rev);
-  if(o.status==="livre")return hi+"merci pour votre achat chez Watch Côte d'Ivoire ! Votre commande ("+n+" article"+(n>1?"s":"")+", "+tot+") a bien été livrée. N'hésitez pas à nous écrire pour toute question. 🙏";
-  return hi+"merci pour votre commande chez Watch Côte d'Ivoire ! Nous l'avons bien reçue ("+n+" article"+(n>1?"s":"")+", "+tot+"). Nous vous contactons très vite pour la livraison. 🙏";
-}
 function orderSheet(id){
   var o=orders.find(function(x){return x.id===id});if(!o)return;
   var c=calc(o),st=STATUS[o.status]||STATUS.a_livrer;
@@ -749,7 +741,6 @@ function orderSheet(id){
    (o.fee?'<div class="sum"><span>Livraison à ma charge</span><span class="num">− '+F(o.fee)+'</span></div>':'<div class="sum"><span>Livraison payée par le client</span><span class="num">'+F(o.dcost||0)+'</span></div>')+
    (c.mm?'<div class="sum"><span>Frais mobile money (1 %)</span><span class="num">− '+F(c.mm)+'</span></div>':'')+'<div class="sum"><span>Paiement</span><span class="pill '+(o.paid?'good':'bad')+'">'+(o.paid?'Payé':'Non payé')+'</span></div></div>'+
    (o.note?'<div class="card">'+esc(o.note)+'</div>':'')+
-   (wa&&o.status!=="annule"?'<div class="row"><a class="btn primary grow" href="https://wa.me/'+wa+'?text='+encodeURIComponent(waMsg(o,c))+'" target="_blank" rel="noopener">Prévenir le client sur WhatsApp</a></div>':'')+
    '<div class="row">'+
    (o.status==="a_livrer"?'<button class="btn primary grow" data-act="setstatus" data-id="'+id+'" data-v="livre">Marquer livrée</button>':o.status==="livre"?'<button class="btn grow" data-act="setstatus" data-id="'+id+'" data-v="a_livrer">Remettre à livrer</button>':'')+
    (o.status!=="annule"?(o.paid?'<button class="btn grow" data-act="setpaid" data-id="'+id+'" data-v="0">Marquer non payée</button>':'<button class="btn grow" data-act="setpaid" data-id="'+id+'" data-v="1">Marquer payée</button>'):'')+
