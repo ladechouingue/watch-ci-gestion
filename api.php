@@ -784,53 +784,6 @@ function wooEnsureHooks(PDO $pdo, array $c): array {
     return ['ok' => true];
 }
 
-/* ---------- SMS aux clients (BulkGate, API simple transactionnelle) ---------- */
-function smsAscii(string $t): string {
-    $x = strtr($t, ['é'=>'e','è'=>'e','ê'=>'e','ë'=>'e','à'=>'a','â'=>'a','ä'=>'a','î'=>'i','ï'=>'i','ô'=>'o','ö'=>'o','ù'=>'u','û'=>'u','ü'=>'u','ç'=>'c','É'=>'E','È'=>'E','À'=>'A','Ç'=>'C','’'=>"'",'‘'=>"'",'«'=>'"','»'=>'"','…'=>'...','–'=>'-','—'=>'-',"\u{00A0}"=>' ',"\u{202F}"=>' ']);
-    return preg_replace('/[^\x20-\x7E\n]/', '', $x) ?? $x;
-}
-function smsNumber(string $raw): string {
-    $d = preg_replace('/\D+/', '', $raw) ?? '';
-    if (strncmp($d, '00', 2) === 0) { $d = substr($d, 2); }
-    if (strlen($d) === 10) { $d = '225' . $d; }
-    elseif (strlen($d) === 8) { $d = '225' . $d; }
-    return (strlen($d) >= 11 && strlen($d) <= 15) ? $d : '';
-}
-function smsSend(PDO $pdo, string $number, string $text): array {
-    $id = (string)(setting($pdo, 'sms_app') ?? ''); $tk = (string)(setting($pdo, 'sms_token') ?? '');
-    if ($id === '' || $tk === '') { return [false, 'Identifiants BulkGate manquants.']; }
-    $num = smsNumber($number); if ($num === '') { return [false, 'Numéro de téléphone invalide.']; }
-    $sender = trim((string)(setting($pdo, 'sms_sender') ?? ''));
-    $data = ['application_id' => $id, 'application_token' => $tk, 'number' => $num, 'text' => smsAscii($text), 'unicode' => false, 'tag' => 'watch-ci'];
-    $mode = (string)(setting($pdo, 'sms_mode') ?? 'gSystem');
-    if ($mode === 'gText' && $sender !== '') { $data['sender_id'] = 'gText'; $data['sender_id_value'] = mb_substr(preg_replace('/[^A-Za-z0-9]/', '', $sender) ?? '', 0, 11); }
-    elseif ($mode === 'gShort') { $data['sender_id'] = 'gShort'; }
-    else { $data['sender_id'] = 'gSystem'; }
-    $ch = curl_init('https://portal.bulkgate.com/api/1.0/simple/transactional');
-    curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_POSTFIELDS => json_encode($data), CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 15, CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Cache-Control: no-cache']]);
-    $body = curl_exec($ch); $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE); $err = curl_error($ch); curl_close($ch);
-    if ($body === false) { return [false, 'BulkGate injoignable : ' . $err]; }
-    $j = json_decode((string)$body, true);
-    if (is_array($j) && isset($j['data']['status']) && $j['data']['status'] === 'accepted') { return [true, 'Accepté par BulkGate (' . $data['sender_id'] . ', n° ' . $num . ')']; }
-    $m = is_array($j) ? (string)($j['error'] ?? ($j['data']['status'] ?? '')) : '';
-    if ($m === '') { $m = 'code ' . $code . ' ' . mb_substr(trim(strip_tags((string)$body)), 0, 120); }
-    return [false, 'BulkGate : ' . $m];
-}
-function smsOrderText(PDO $pdo, array $o): string {
-    $tpl = (string)(setting($pdo, 'sms_tpl') ?? ''); if (trim($tpl) === '') { $tpl = "Bonjour {prenom}, votre commande Watch Cote d'Ivoire ({articles}, {total}) est bien recue. Nous vous contactons pour la livraison. Merci !"; }
-    $n = 0; $tot = 0.0; foreach ((array)($o['items'] ?? []) as $i) { $n += (int)($i['qty'] ?? 0); $tot += (int)($i['qty'] ?? 0) * (float)($i['price'] ?? 0); }
-    $tot -= (float)($o['disc'] ?? 0);
-    $name = trim((string)($o['customer'] ?? '')); $first = $name !== '' ? preg_split('/\s+/', $name)[0] : '';
-    return strtr($tpl, ['{prenom}' => $first !== '' ? $first : 'client', '{nom}' => $name, '{articles}' => $n . ' article' . ($n > 1 ? 's' : ''), '{total}' => number_format($tot, 0, ',', ' ') . ' F']);
-}
-function smsOrder(PDO $pdo, array $o, bool $fromSite): void {
-    if (setting($pdo, 'sms_on') !== '1') { return; }
-    if (!$fromSite && setting($pdo, 'sms_tool') === '0') { return; }
-    $ph = (string)($o['phone'] ?? ''); if (smsNumber($ph) === '') { return; }
-    [$ok, $msg] = smsSend($pdo, $ph, smsOrderText($pdo, $o));
-    setSetting($pdo, 'sms_last', date('d/m H:i') . ' · ' . ($ok ? 'OK' : 'Échec') . ' · ' . $msg);
-}
-
 /* Commandes du site -> outil : création, stock, annulation */
 function wooImportOrders(PDO $pdo, array $c): array {
     $res = ['new' => 0, 'cancelled' => 0, 'notes' => []];
@@ -914,7 +867,6 @@ function wooImportOrders(PDO $pdo, array $c): array {
     }
     setSetting($pdo, 'woo_ord_busy', '0');
     foreach (($res['lines'] ?? []) as $ln) { try { pushSend($pdo, 'Nouvelle commande du site', $ln); } catch (Throwable $e) { } }
-    foreach (($res['docs'] ?? []) as $dd) { try { smsOrder($pdo, $dd, true); } catch (Throwable $e) { } }
     unset($res['lines'], $res['docs']);
     return $res;
 }
@@ -961,7 +913,7 @@ switch ($r) {
         $json = json_encode($d, JSON_UNESCAPED_UNICODE);
         if (strlen($json) > 200000) { fail('Document trop volumineux.'); }
         $pdo->prepare("INSERT INTO $c(id,data,updated) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data, updated=excluded.updated")->execute([$id, $json, time()]);
-        if ($isNew) { try { pushSend($pdo, 'Nouvelle commande · ' . (string)($d['channel'] ?? 'Outil'), pushOrderText($d)); } catch (Throwable $e) { } try { smsOrder($pdo, $d, false); } catch (Throwable $e) { } }
+        if ($isNew) { try { pushSend($pdo, 'Nouvelle commande · ' . (string)($d['channel'] ?? 'Outil'), pushOrderText($d)); } catch (Throwable $e) { } }
         out(['ok' => true]);
     }
 
@@ -1381,30 +1333,6 @@ switch ($r) {
         if (!is_array($d) || empty($d['woo']) || $c['key'] === '') { out(['skipped' => true]); }
         wooReq($c, 'PUT', 'orders/' . (int)$d['woo'], ['status' => 'cancelled']);
         out(['ok' => true]);
-    }
-
-    case 'sms_get': {
-        out(['on' => setting($pdo, 'sms_on') === '1', 'app' => (string)(setting($pdo, 'sms_app') ?? ''), 'hasToken' => (string)(setting($pdo, 'sms_token') ?? '') !== '', 'sender' => (string)(setting($pdo, 'sms_sender') ?? ''), 'mode' => (string)(setting($pdo, 'sms_mode') ?? 'gSystem'), 'tpl' => (string)(setting($pdo, 'sms_tpl') ?? ''), 'tool' => setting($pdo, 'sms_tool') !== '0', 'last' => (string)(setting($pdo, 'sms_last') ?? '')]);
-    }
-
-    case 'sms_save': {
-        if (!$isPost) { fail('POST requis.', 405); }
-        $b = body();
-        setSetting($pdo, 'sms_on', !empty($b['on']) ? '1' : '0'); setSetting($pdo, 'sms_tool', !empty($b['tool']) ? '1' : '0');
-        setSetting($pdo, 'sms_app', trim((string)($b['app'] ?? ''))); setSetting($pdo, 'sms_sender', mb_substr(trim((string)($b['sender'] ?? '')), 0, 11));
-        setSetting($pdo, 'sms_tpl', mb_substr(trim((string)($b['tpl'] ?? '')), 0, 300));
-        $md = (string)($b['mode'] ?? 'gSystem'); setSetting($pdo, 'sms_mode', in_array($md, ['gSystem', 'gText', 'gShort'], true) ? $md : 'gSystem');
-        $tk = trim((string)($b['token'] ?? '')); if ($tk !== '') { setSetting($pdo, 'sms_token', $tk); }
-        out(['ok' => true]);
-    }
-
-    case 'sms_test': {
-        if (!$isPost) { fail('POST requis.', 405); }
-        session_write_close();
-        $num = (string)(body()['number'] ?? '');
-        [$ok, $msg] = smsSend($pdo, $num, 'TEST Watch CI ' . date('H:i') . ' - ' . smsOrderText($pdo, ['customer' => 'Test', 'items' => [['qty' => 3, 'price' => 5000]], 'disc' => 5000]));
-        setSetting($pdo, 'sms_last', date('d/m H:i') . ' · test · ' . $msg);
-        out(['ok' => $ok, 'msg' => $msg]);
     }
 
     case 'push_key': {

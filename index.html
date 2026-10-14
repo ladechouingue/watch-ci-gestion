@@ -187,7 +187,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=85;
+var PAGE_V=86;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -425,25 +425,6 @@ function openSheet(html){
 function closeSheet(){$("#layer").innerHTML=""}
 document.addEventListener("keydown",function(e){if(e.key==="Escape"){if($("#pk_bd"))closePicker();else closeSheet()}if(e.key==="Enter"&&e.target.id==="pw"){e.preventDefault();var b=$("[data-act=login],[data-act=setup]");if(b)b.click()}});
 
-/* ---------- SMS aux clients ---------- */
-function smsSheet(){
-  openSheet('<h2>SMS aux clients</h2><div class="empty">Chargement…</div>');
-  api("sms_get").then(function(j){
-    openSheet('<h2>SMS aux clients</h2><p class="s" style="color:var(--muted)">Le client reçoit un SMS dès que sa commande est enregistrée. Sur BulkGate : créez une API « HTTP Simple », copiez l\'Application ID et le Token, et autorisez la Côte d\'Ivoire dans « Définir les restrictions ».</p>'+
-    '<label class="row" style="gap:10px"><input id="s_on" type="checkbox"'+(j.on?' checked':'')+'> <span>Envoyer un SMS à chaque nouvelle commande</span></label>'+
-    '<label class="row" style="gap:10px"><input id="s_tool" type="checkbox"'+(j.tool?' checked':'')+'> <span>Aussi pour les commandes créées dans l\'outil</span></label>'+
-    '<label class="f">Application ID<input id="s_app" type="text" inputmode="numeric" value="'+esc(j.app)+'"></label>'+
-    '<label class="f">Application Token<input id="s_token" type="password" autocomplete="off" placeholder="'+(j.hasToken?'Déjà enregistré (laisser vide pour le garder)':'Collez le token ici')+'"></label>'+
-    '<label class="f">Type d\'expéditeur<select id="s_mode"><option value="gSystem"'+(j.mode==='gSystem'?' selected':'')+'>Automatique BulkGate (conseillé)</option><option value="gShort"'+(j.mode==='gShort'?' selected':'')+'>Numéro court</option><option value="gText"'+(j.mode==='gText'?' selected':'')+'>Mon nom (ex. WATCHCI)</option></select></label>'+
-    '<label class="f">Mon nom d\'expéditeur (seulement avec « Mon nom »)<input id="s_sender" type="text" maxlength="11" value="'+esc(j.sender)+'" placeholder="WATCHCI"></label>'+
-    '<label class="f">Message<textarea id="s_tpl" rows="4" placeholder="Bonjour {prenom}, votre commande Watch Cote d\'Ivoire ({articles}, {total}) est bien recue. Nous vous contactons pour la livraison. Merci !">'+esc(j.tpl)+'</textarea></label>'+
-    '<div class="s" style="color:var(--muted)">Variables : {prenom} {nom} {articles} {total}. Les accents sont retirés pour qu\'un SMS reste à 160 caractères.</div>'+
-    (j.last?'<div class="card"><div class="s">Dernier envoi : '+esc(j.last)+'</div></div>':'')+
-    '<label class="f">Numéro pour le test<input id="s_num" type="tel" placeholder="07 09 92 43 17"></label>'+
-    '<div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn primary" data-act="smssave" type="button">Enregistrer</button><button class="btn" data-act="smstest" type="button">Envoyer un test</button><span class="grow"></span><button class="btn" data-act="close">Fermer</button></div>')
-  }).catch(function(e){openSheet('<h2>SMS aux clients</h2><div class="empty">'+esc(e.message)+'</div><div class="row"><button class="btn grow" data-act="close">Fermer</button></div>')});
-}
-function smsData(){return {on:$("#s_on").checked,tool:$("#s_tool").checked,app:$("#s_app").value.trim(),token:$("#s_token").value.trim(),sender:$("#s_sender").value.trim(),mode:$("#s_mode").value,tpl:$("#s_tpl").value.trim()}}
 /* ---------- Notifications push ---------- */
 function pushOk(){return "serviceWorker" in navigator&&"PushManager" in window&&"Notification" in window}
 function u8(b){var p="=".repeat((4-b.length%4)%4),r=atob((b+p).replace(/-/g,"+").replace(/_/g,"/")),a=new Uint8Array(r.length);for(var i=0;i<r.length;i++)a[i]=r.charCodeAt(i);return a}
@@ -531,7 +512,6 @@ function settingsSheet(){
     '<button class="setrow" data-act="inv" type="button"><span>Reçu (logo, téléphone, adresse)</span>'+chev+'</button>'+
     '<button class="setrow" data-act="prices" type="button"><span>Changer les prix en masse</span>'+chev+'</button>'+
     '<button class="setrow" data-act="notif" type="button"><span>Notifications de commandes</span>'+chev+'</button>'+
-    '<button class="setrow" data-act="sms" type="button"><span>SMS aux clients (BulkGate)</span>'+chev+'</button>'+
     '<button class="setrow" data-act="woo" type="button"><span>Lien avec le site (WooCommerce)</span>'+chev+'</button>'+
     '<button class="setrow" data-act="chkupd" type="button"><span>Vérifier les mises à jour</span>'+chev+'</button>'+
     '<button class="setrow" data-act="rollback" data-confirm="Revenir à la version précédente ?" type="button"><span>Version précédente</span>'+chev+'</button>'+
@@ -881,9 +861,6 @@ document.addEventListener("click",function(e){
       api("cat_client",{k:k}).then(function(j){var f="../catalogues-client/"+j.file+"?v="+j.v,l="client "+zl,fe=esc(f);
         openSheet('<h2>Catalogue '+esc(zl)+'</h2><p class="s" style="color:var(--muted)">'+j.n+' article'+(j.n>1?'s':'')+' en stock. Généré à l\'instant.</p><div class="row catacts"><a class="btn primary" href="uploads/catalogues-client/'+j.file+'?v='+j.v+'" target="_blank" rel="noopener">Ouvrir</a><button class="btn" data-act="catlink" data-f="'+fe+'">Lien</button><button class="btn" data-act="catshare" data-f="'+fe+'" data-l="'+esc(l)+'">Partager</button></div><div class="row"><button class="btn" data-act="cats">Retour</button><span class="grow"></span><button class="btn" data-act="close">Fermer</button></div>')
       }).catch(function(e){b.disabled=false;toast(e.message)});break}
-    case "sms":smsSheet();break;
-    case "smssave":b.disabled=true;api("sms_save",smsData()).then(function(){b.disabled=false;toast("SMS enregistré.");smsSheet()}).catch(function(e){b.disabled=false;toast(e.message)});break;
-    case "smstest":{var num=$("#s_num").value.trim();if(!num){toast("Indiquez un numéro pour le test.");break}b.disabled=true;api("sms_save",smsData()).then(function(){return api("sms_test",{number:num})}).then(function(j){b.disabled=false;toast(j.ok?"SMS de test envoyé.":j.msg)}).catch(function(e){b.disabled=false;toast(e.message)});break}
     case "notif":notifSheet();break;
     case "notifon":notifOn(b);break;
     case "notiftest":b.disabled=true;api("push_test",{}).then(function(j){b.disabled=false;toast(j.sent?"Notification envoyée.":"Aucun appareil abonné. Appuyez sur « Activer ».")}).catch(function(e){b.disabled=false;toast(e.message)});break;
