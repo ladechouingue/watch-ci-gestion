@@ -187,7 +187,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=87;
+var PAGE_V=88;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -630,8 +630,10 @@ function shareCat(f,l){
     }else save(bl);
   };
   if(CATBL[url]){go(CATBL[url]);return}
-  toast("Préparation… puis appuyez à nouveau sur Partager.");
-  fetch(url).then(function(r){if(!r.ok)throw new Error("x");return r.blob()}).then(function(bl){CATBL[url]=bl}).catch(function(){toast("Fichier introuvable, ouvrez-le avec « Ouvrir ».")});
+  fetch(url).then(function(r){return r.ok?r.blob():null}).then(function(bl){if(bl)CATBL[url]=bl}).catch(function(){});
+  var abs=new URL(url,location.href).href;
+  if(navigator.share){navigator.share({title:title,text:title,url:abs}).catch(function(e){if(e&&e.name==="AbortError")return;copyCatLink(f)});return}
+  copyCatLink(f);
 }
 function copyCatLink(f){
   var full=new URL("uploads/catalogues/"+f,location.href).href;
