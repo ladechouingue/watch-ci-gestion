@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   View, Text, Image, ScrollView, TouchableOpacity, TextInput, ActivityIndicator,
-  Linking, Alert, SafeAreaView, StyleSheet, Platform, StatusBar as RNStatusBar,
+  Linking, Alert, StyleSheet, Platform, StatusBar as RNStatusBar,
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { WHATSAPP } from "./src/config";
@@ -23,12 +24,15 @@ export default function App() {
   const [pick, setPick] = useState(null); // produit ouvert
   const [ready, setReady] = useState(false);
   const [done, setDone] = useState(null);
+  const [profile, setProfile] = useState({ name: "", phone: "", address: "", city: "Abidjan", email: "" });
 
   useEffect(() => {
     (async () => {
       try {
         const s = await AsyncStorage.getItem("size");
         const c = await AsyncStorage.getItem("cart");
+        const pr = await AsyncStorage.getItem("profile");
+        if (pr) setProfile((x) => ({ ...x, ...JSON.parse(pr) }));
         if (s) { setSize(WATCH_SIZES.find((x) => x.key === s) || null); setScreen("shop"); }
         if (c) setCart(JSON.parse(c));
       } catch (e) {}
@@ -63,22 +67,29 @@ export default function App() {
   const items = useMemo(() => (products && size ? compatible(products, size) : []), [products, size]);
   const secs = useMemo(() => sections(items), [items]);
   const n = cartCount(cart);
+  const saveProfile = (p) => { setProfile(p); AsyncStorage.setItem("profile", JSON.stringify(p)).catch(() => {}); };
+  const tab = pick ? "shop" : screen === "done" ? "cart" : screen;
+  const go = (t) => { if (t === "wa") { Linking.openURL("https://wa.me/" + WHATSAPP); return; } setPick(null); setScreen(t === "shop" && !size ? "home" : t); };
 
   if (!ready) return <View style={s.center}><ActivityIndicator color="#141A17" /></View>;
 
   return (
     <SafeAreaView style={s.root}>
       <StatusBar style="dark" />
-      {screen === "home" && <Home onPick={chooseSize} />}
-      {screen === "shop" && (
-        <Shop size={size} secs={secs} loading={!products && !err} err={err} retry={load} total={cartSubtotal(cart) - cartDiscount(cart)}
-          onSize={() => setScreen("home")} onOpen={setPick} n={n} onCart={() => setScreen("cart")} />
-      )}
-      {screen === "cart" && (
-        <Cart cart={cart} qty={qty} back={() => setScreen("shop")}
-          onDone={(r) => { setDone(r); setCart([]); setScreen("done"); }} />
-      )}
-      {screen === "done" && <Done r={done} onHome={() => setScreen("shop")} />}
+      <View style={{ flex: 1 }}>
+        {screen === "home" && <Home size={size} onPick={chooseSize} />}
+        {screen === "shop" && (
+          <Shop size={size} secs={secs} loading={!products && !err} err={err} retry={load}
+            onSize={() => setScreen("home")} onOpen={setPick} />
+        )}
+        {screen === "cart" && (
+          <Cart cart={cart} qty={qty} profile={profile} goShop={() => go("shop")}
+            onDone={(r, f) => { saveProfile({ name: f.name, phone: f.phone, address: f.address, city: f.city, email: f.email }); setDone(r); setCart([]); setScreen("done"); }} />
+        )}
+        {screen === "account" && <Account profile={profile} size={size} onSave={saveProfile} onSize={() => setScreen("home")} />}
+        {screen === "done" && <Done r={done} onHome={() => go("shop")} />}
+      </View>
+      <Nav tab={tab} n={n} onTab={go} />
       {pick && <Detail it={pick} onClose={() => setPick(null)} onAdd={add} />}
     </SafeAreaView>
   );
@@ -86,6 +97,7 @@ export default function App() {
 
 
 const INK = "#141A17", PAPER = "#FFFFFF", MIST = "#F1F2EF", LINE = "#E3E5E0", MUTED = "#7A817C", COPPER = "#C4551A";
+const NAVON = "#E0702F";
 const SERIF = Platform.OS === "ios" ? "Didot" : "serif";
 
 function Btn({ label, onPress, disabled, busy, light }) {
@@ -97,10 +109,10 @@ function Btn({ label, onPress, disabled, busy, light }) {
   );
 }
 
-function Home({ onPick }) {
+function Home({ size, onPick }) {
   const [open, setOpen] = useState(false);
   return (
-    <ScrollView contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 28, paddingTop: 56, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
+    <ScrollView contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 28, paddingTop: 40, paddingBottom: 150 }} keyboardShouldPersistTaps="handled">
       <View style={{ alignItems: "center" }}>
         <Image source={logo} style={{ width: 230, height: 110, resizeMode: "contain" }} />
         <View style={{ width: 36, height: 1, backgroundColor: COPPER, marginVertical: 30 }} />
@@ -116,7 +128,7 @@ function Home({ onPick }) {
           <View style={s.list}>
             {WATCH_SIZES.map((x, i) => (
               <TouchableOpacity key={x.key} style={[s.row, i === WATCH_SIZES.length - 1 && { borderBottomWidth: 0 }]} onPress={() => onPick(x)}>
-                <Text style={s.rowTxt}>{x.label}</Text>
+                <Text style={[s.rowTxt, size && size.key === x.key && { fontWeight: "700" }]}>{x.label}</Text>
                 <Feather name="arrow-right" size={16} color={MUTED} />
               </TouchableOpacity>
             ))}
@@ -127,18 +139,11 @@ function Home({ onPick }) {
   );
 }
 
-function Shop({ size, secs, loading, err, retry, onSize, onOpen, n, total, onCart }) {
+function Shop({ size, secs, loading, err, retry, onSize, onOpen }) {
   return (
     <View style={{ flex: 1, backgroundColor: PAPER }}>
       <View style={s.header}>
-        <TouchableOpacity onPress={() => Linking.openURL("https://wa.me/" + WHATSAPP)} style={s.hIcon} hitSlop={10}>
-          <Feather name="message-circle" size={22} color={INK} />
-        </TouchableOpacity>
-        <Image source={logo} style={{ width: 120, height: 44, resizeMode: "contain" }} />
-        <TouchableOpacity onPress={onCart} style={s.hIcon} hitSlop={10}>
-          <Feather name="shopping-bag" size={22} color={INK} />
-          {n > 0 && <View style={s.badge}><Text style={s.badgeTxt}>{n}</Text></View>}
-        </TouchableOpacity>
+        <Image source={logo} style={{ width: 130, height: 48, resizeMode: "contain" }} />
       </View>
       <TouchableOpacity onPress={onSize} style={s.sizeBar} activeOpacity={0.7}>
         <Text style={s.sizeBarTxt}>Apple Watch {size ? size.label : ""}</Text>
@@ -153,7 +158,7 @@ function Shop({ size, secs, loading, err, retry, onSize, onOpen, n, total, onCar
         </View>
       )}
       {!loading && !err && (
-        <ScrollView contentContainerStyle={{ paddingBottom: n > 0 ? 120 : 40 }} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={{ paddingBottom: 150 }} showsVerticalScrollIndicator={false}>
           {!secs.length && <Text style={{ textAlign: "center", marginTop: 60, color: MUTED }}>Rien de disponible pour cette taille pour le moment.</Text>}
           {secs.map((sec) => (
             <View key={sec.key} style={{ marginTop: 34 }}>
@@ -176,15 +181,61 @@ function Shop({ size, secs, loading, err, retry, onSize, onOpen, n, total, onCar
           ))}
         </ScrollView>
       )}
-      {n > 0 && !loading && (
-        <View style={s.cartBarWrap} pointerEvents="box-none">
-          <TouchableOpacity style={s.cartBar} onPress={onCart} activeOpacity={0.9}>
-            <Text style={s.cartBarL}>Voir le panier · {n} article{n > 1 ? "s" : ""}</Text>
-            <Text style={s.cartBarR}>{fmt(total)}</Text>
-          </TouchableOpacity>
-        </View>
-      )}
     </View>
+  );
+}
+
+const TABS = [
+  { k: "home", l: "Accueil", i: "home" },
+  { k: "shop", l: "Boutique", i: "grid" },
+  { k: "cart", l: "Panier", i: "shopping-bag", main: true },
+  { k: "wa", l: "WhatsApp", i: "message-circle" },
+  { k: "account", l: "Compte", i: "user" },
+];
+function Nav({ tab, n, onTab }) {
+  return (
+    <View style={s.navWrap} pointerEvents="box-none">
+      <View style={s.nav}>
+        {TABS.map((t) => {
+          const on = tab === t.k;
+          const col = on ? NAVON : "#6B6F6C";
+          return (
+            <TouchableOpacity key={t.k} style={s.navItem} onPress={() => onTab(t.k)} activeOpacity={0.8}>
+              {t.main ? (
+                <View style={s.navMain}>
+                  <Feather name={t.i} size={26} color="#fff" />
+                  {n > 0 && <View style={s.navBadge}><Text style={s.navBadgeTxt}>{n}</Text></View>}
+                </View>
+              ) : (
+                <Feather name={t.i} size={26} color={col} />
+              )}
+              <Text style={[s.navLbl, { color: t.main ? NAVON : col, marginTop: t.main ? 2 : 6 }]}>{t.l}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+function Account({ profile, size, onSave, onSize }) {
+  const [f, setF] = useState(profile);
+  const set = (k) => (v) => setF((x) => ({ ...x, [k]: v }));
+  return (
+    <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 150 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+      <Text style={[s.display, { textAlign: "left", marginTop: 8 }]}>Mon compte</Text>
+      <Text style={[s.lede, { textAlign: "left", marginTop: 6, maxWidth: 340 }]}>Vos informations sont gardées sur ce téléphone et préremplissent vos prochaines commandes.</Text>
+      <TouchableOpacity onPress={onSize} style={[s.sizeBar, { marginTop: 22, marginHorizontal: -20 }]} activeOpacity={0.7}>
+        <Text style={s.sizeBarTxt}>Ma montre : {size ? size.label : "non choisie"}</Text>
+        <Text style={s.sizeBarLink}>Modifier</Text>
+      </TouchableOpacity>
+      <Field l="Nom complet" v={f.name} on={set("name")} />
+      <Field l="Téléphone" v={f.phone} on={set("phone")} kb="phone-pad" />
+      <Field l="Adresse ou quartier" v={f.address} on={set("address")} />
+      <Field l="Ville" v={f.city} on={set("city")} />
+      <Field l="Email (facultatif)" v={f.email} on={set("email")} kb="email-address" />
+      <View style={{ marginTop: 28 }}><Btn label="Enregistrer" onPress={() => { onSave(f); Alert.alert("Enregistré", "Vos informations sont à jour."); }} /></View>
+    </ScrollView>
   );
 }
 
@@ -224,27 +275,25 @@ function Detail({ it, onClose, onAdd }) {
   );
 }
 
-function Cart({ cart, qty, back, onDone }) {
-  const [f, setF] = useState({ name: "", phone: "", address: "", city: "Abidjan", email: "", note: "" });
+function Cart({ cart, qty, profile, goShop, onDone }) {
+  const [f, setF] = useState({ name: "", phone: "", address: "", city: "Abidjan", email: "", note: "", ...profile });
   const [busy, setBusy] = useState(false);
   const sub = cartSubtotal(cart), disc = cartDiscount(cart);
   const set = (k) => (v) => setF((x) => ({ ...x, [k]: v }));
   async function go() {
     if (!f.name.trim() || !f.phone.trim() || !f.address.trim()) { Alert.alert("Informations manquantes", "Indiquez votre nom, votre téléphone et votre adresse de livraison."); return; }
     setBusy(true);
-    try { onDone(await placeOrder(cart, f)); }
+    try { onDone(await placeOrder(cart, f), f); }
     catch (e) { Alert.alert("Commande impossible", (e.message || "Une erreur est survenue.") + "\n\nVous pouvez aussi nous écrire sur WhatsApp."); }
     setBusy(false);
   }
   return (
     <View style={{ flex: 1, backgroundColor: PAPER }}>
       <View style={s.header}>
-        <TouchableOpacity onPress={back} style={s.hIcon} hitSlop={10}><Feather name="arrow-left" size={22} color={INK} /></TouchableOpacity>
-        <Text style={{ fontFamily: SERIF, fontSize: 20, color: INK }}>Panier</Text>
-        <View style={s.hIcon} />
+        <Text style={{ fontFamily: SERIF, fontSize: 24, color: INK, paddingVertical: 8 }}>Panier</Text>
       </View>
-      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 70 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-        {!cart.length && <Text style={{ color: MUTED, marginVertical: 40, textAlign: "center" }}>Votre panier est vide.</Text>}
+      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 160 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        {!cart.length && (<View style={{ alignItems: "center", marginVertical: 50 }}><Text style={{ color: MUTED, marginBottom: 20 }}>Votre panier est vide.</Text><Btn label="Voir la boutique" onPress={goShop} light /></View>)}
         {cart.map((l) => (
           <View key={l.key} style={s.line}>
             <View style={s.lineImg}>{l.img ? <Image source={{ uri: l.img }} style={{ width: "100%", height: "100%" }} resizeMode="contain" /> : null}</View>
@@ -320,7 +369,7 @@ const s = StyleSheet.create({
   list: { borderWidth: 1, borderTopWidth: 0, borderColor: INK },
   row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 16, paddingHorizontal: 18, borderBottomWidth: 1, borderColor: LINE },
   rowTxt: { fontSize: 16, color: INK },
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 18, paddingVertical: 6 },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingHorizontal: 18, paddingVertical: 6 },
   hIcon: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
   badge: { position: "absolute", top: 3, right: 1, minWidth: 17, height: 17, borderRadius: 9, backgroundColor: COPPER, alignItems: "center", justifyContent: "center", paddingHorizontal: 4 },
   badgeTxt: { color: "#fff", fontSize: 10, fontWeight: "700" },
@@ -335,6 +384,13 @@ const s = StyleSheet.create({
   cardImg: { width: "88%", height: "88%" },
   cardName: { marginTop: 10, color: INK, fontSize: 14, lineHeight: 19 },
   cardPrice: { marginTop: 3, color: INK, fontFamily: SERIF, fontSize: 16 },
+  navWrap: { position: "absolute", left: 0, right: 0, bottom: 0, paddingHorizontal: 14, paddingBottom: 14 },
+  nav: { flexDirection: "row", backgroundColor: "#fff", borderRadius: 34, height: 78, alignItems: "center", shadowColor: "#000", shadowOpacity: 0.14, shadowRadius: 18, shadowOffset: { width: 0, height: 6 }, elevation: 12 },
+  navItem: { flex: 1, alignItems: "center", justifyContent: "center" },
+  navLbl: { fontSize: 12, fontWeight: "500" },
+  navMain: { width: 60, height: 60, borderRadius: 20, backgroundColor: NAVON, alignItems: "center", justifyContent: "center", marginTop: -34, shadowColor: NAVON, shadowOpacity: 0.35, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 8 },
+  navBadge: { position: "absolute", top: -6, right: -6, minWidth: 20, height: 20, borderRadius: 10, backgroundColor: INK, alignItems: "center", justifyContent: "center", paddingHorizontal: 5, borderWidth: 2, borderColor: "#fff" },
+  navBadgeTxt: { color: "#fff", fontSize: 11, fontWeight: "700" },
   cartBarWrap: { position: "absolute", left: 0, right: 0, bottom: 0, padding: 16, paddingBottom: 26 },
   cartBar: { backgroundColor: INK, flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 17, paddingHorizontal: 20 },
   cartBarL: { color: "#fff", fontSize: 14, letterSpacing: 0.3 },
