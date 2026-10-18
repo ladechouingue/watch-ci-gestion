@@ -4,7 +4,7 @@ import {
   Linking, Alert, StyleSheet, Platform, StatusBar as RNStatusBar,
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { WHATSAPP } from "./src/config";
@@ -74,7 +74,8 @@ export default function App() {
   if (!ready) return <View style={s.center}><ActivityIndicator color="#141A17" /></View>;
 
   return (
-    <SafeAreaView style={s.root}>
+    <SafeAreaProvider>
+    <SafeAreaView style={s.root} edges={["top"]}>
       <StatusBar style="dark" />
       <View style={{ flex: 1 }}>
         {screen === "home" && <Home size={size} onPick={chooseSize} />}
@@ -92,6 +93,7 @@ export default function App() {
       <Nav tab={tab} n={n} onTab={go} />
       {pick && <Detail it={pick} onClose={() => setPick(null)} onAdd={add} />}
     </SafeAreaView>
+    </SafeAreaProvider>
   );
 }
 
@@ -112,7 +114,7 @@ function Btn({ label, onPress, disabled, busy, light }) {
 function Home({ size, onPick }) {
   const [open, setOpen] = useState(false);
   return (
-    <ScrollView contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 28, paddingTop: 40, paddingBottom: 150 }} keyboardShouldPersistTaps="handled">
+    <ScrollView contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 28, paddingTop: 28, paddingBottom: 150 }} keyboardShouldPersistTaps="handled">
       <View style={{ alignItems: "center" }}>
         <Image source={logo} style={{ width: 230, height: 110, resizeMode: "contain" }} />
         <View style={{ width: 36, height: 1, backgroundColor: COPPER, marginVertical: 30 }} />
