@@ -64,7 +64,7 @@ export default function App() {
   const secs = useMemo(() => sections(items), [items]);
   const n = cartCount(cart);
 
-  if (!ready) return <View style={s.center}><ActivityIndicator color={ORANGE} /></View>;
+  if (!ready) return <View style={s.center}><ActivityIndicator color="#141A17" /></View>;
 
   return (
     <SafeAreaView style={s.root}>
