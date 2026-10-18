@@ -4,8 +4,9 @@ import {
   Linking, Alert, SafeAreaView, StyleSheet, Platform, StatusBar as RNStatusBar,
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
+import { Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { ORANGE, DARK, WHATSAPP } from "./src/config";
+import { WHATSAPP } from "./src/config";
 import { loadProducts, placeOrder } from "./src/api";
 import {
   WATCH_SIZES, compatible, sections, price, cartDiscount, cartSubtotal, cartCount, fmt, isAccessory,
@@ -70,7 +71,7 @@ export default function App() {
       <StatusBar style="dark" />
       {screen === "home" && <Home onPick={chooseSize} />}
       {screen === "shop" && (
-        <Shop size={size} secs={secs} loading={!products && !err} err={err} retry={load}
+        <Shop size={size} secs={secs} loading={!products && !err} err={err} retry={load} total={cartSubtotal(cart) - cartDiscount(cart)}
           onSize={() => setScreen("home")} onOpen={setPick} n={n} onCart={() => setScreen("cart")} />
       )}
       {screen === "cart" && (
@@ -83,24 +84,40 @@ export default function App() {
   );
 }
 
+
+const INK = "#141A17", PAPER = "#FFFFFF", MIST = "#F1F2EF", LINE = "#E3E5E0", MUTED = "#7A817C", COPPER = "#C4551A";
+const SERIF = Platform.OS === "ios" ? "Didot" : "serif";
+
+function Btn({ label, onPress, disabled, busy, light }) {
+  return (
+    <TouchableOpacity activeOpacity={0.85} disabled={disabled || busy} onPress={onPress}
+      style={[s.btn, light && s.btnLight, (disabled || busy) && { opacity: 0.35 }]}>
+      {busy ? <ActivityIndicator color={light ? INK : "#fff"} /> : <Text style={[s.btnTxt, light && { color: INK }]}>{label}</Text>}
+    </TouchableOpacity>
+  );
+}
+
 function Home({ onPick }) {
   const [open, setOpen] = useState(false);
   return (
-    <ScrollView contentContainerStyle={{ padding: 20, alignItems: "center" }} keyboardShouldPersistTaps="handled">
-      <Image source={logo} style={{ width: 240, height: 120, resizeMode: "contain", marginTop: 30 }} />
-      <Text style={s.h1}>Quelle est la taille de ta montre ?</Text>
-      <Text style={s.sub}>On te montre seulement ce qui va avec.</Text>
-      <View style={{ width: "100%", maxWidth: 420 }}>
+    <ScrollView contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 28, paddingTop: 56, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
+      <View style={{ alignItems: "center" }}>
+        <Image source={logo} style={{ width: 230, height: 110, resizeMode: "contain" }} />
+        <View style={{ width: 36, height: 1, backgroundColor: COPPER, marginVertical: 30 }} />
+        <Text style={s.display}>Pour quelle montre ?</Text>
+        <Text style={s.lede}>Choisissez votre modèle, nous vous montrons uniquement les bracelets, coques et protections qui lui vont.</Text>
+      </View>
+      <View style={{ marginTop: 34 }}>
         <TouchableOpacity style={s.drop} onPress={() => setOpen(!open)} activeOpacity={0.8}>
-          <Text style={s.dropTxt}>Choisis ta taille</Text>
-          <Text style={s.dropArrow}>{open ? "▲" : "▼"}</Text>
+          <Text style={s.dropTxt}>Taille de la montre</Text>
+          <Feather name={open ? "chevron-up" : "chevron-down"} size={20} color={INK} />
         </TouchableOpacity>
         {open && (
           <View style={s.list}>
             {WATCH_SIZES.map((x, i) => (
               <TouchableOpacity key={x.key} style={[s.row, i === WATCH_SIZES.length - 1 && { borderBottomWidth: 0 }]} onPress={() => onPick(x)}>
                 <Text style={s.rowTxt}>{x.label}</Text>
-                <Text style={{ color: ORANGE, fontSize: 18 }}>›</Text>
+                <Feather name="arrow-right" size={16} color={MUTED} />
               </TouchableOpacity>
             ))}
           </View>
@@ -110,32 +127,46 @@ function Home({ onPick }) {
   );
 }
 
-function Shop({ size, secs, loading, err, retry, onSize, onOpen, n, onCart }) {
+function Shop({ size, secs, loading, err, retry, onSize, onOpen, n, total, onCart }) {
   return (
-    <View style={{ flex: 1 }}>
-      <View style={s.top}>
-        <TouchableOpacity onPress={onSize} style={s.chip}><Text style={s.chipTxt}>⌚ {size ? size.label : ""} ▾</Text></TouchableOpacity>
-        <TouchableOpacity onPress={() => Linking.openURL("https://wa.me/" + WHATSAPP)} style={s.wa}><Text style={{ color: "#fff", fontWeight: "700" }}>WhatsApp</Text></TouchableOpacity>
-        <TouchableOpacity onPress={onCart} style={s.cartBtn}><Text style={{ color: "#fff", fontWeight: "700" }}>🛒 {n}</Text></TouchableOpacity>
+    <View style={{ flex: 1, backgroundColor: PAPER }}>
+      <View style={s.header}>
+        <TouchableOpacity onPress={() => Linking.openURL("https://wa.me/" + WHATSAPP)} style={s.hIcon} hitSlop={10}>
+          <Feather name="message-circle" size={22} color={INK} />
+        </TouchableOpacity>
+        <Image source={logo} style={{ width: 120, height: 44, resizeMode: "contain" }} />
+        <TouchableOpacity onPress={onCart} style={s.hIcon} hitSlop={10}>
+          <Feather name="shopping-bag" size={22} color={INK} />
+          {n > 0 && <View style={s.badge}><Text style={s.badgeTxt}>{n}</Text></View>}
+        </TouchableOpacity>
       </View>
-      {loading && <View style={s.center}><ActivityIndicator size="large" color={ORANGE} /></View>}
+      <TouchableOpacity onPress={onSize} style={s.sizeBar} activeOpacity={0.7}>
+        <Text style={s.sizeBarTxt}>Apple Watch {size ? size.label : ""}</Text>
+        <Text style={s.sizeBarLink}>Modifier</Text>
+      </TouchableOpacity>
+      {loading && <View style={s.center}><ActivityIndicator size="small" color={INK} /></View>}
       {!!err && (
         <View style={s.center}>
-          <Text style={{ textAlign: "center", marginBottom: 12 }}>Connexion impossible{"\n"}{err}</Text>
-          <TouchableOpacity style={s.btn} onPress={retry}><Text style={s.btnTxt}>Réessayer</Text></TouchableOpacity>
+          <Text style={{ textAlign: "center", marginBottom: 6, color: INK, fontSize: 16 }}>Connexion impossible</Text>
+          <Text style={{ textAlign: "center", marginBottom: 18, color: MUTED }}>{err}</Text>
+          <Btn label="Réessayer" onPress={retry} />
         </View>
       )}
       {!loading && !err && (
-        <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: 40 }}>
-          {!secs.length && <Text style={{ textAlign: "center", marginTop: 40, color: "#666" }}>Rien de disponible pour cette taille pour le moment.</Text>}
+        <ScrollView contentContainerStyle={{ paddingBottom: n > 0 ? 120 : 40 }} showsVerticalScrollIndicator={false}>
+          {!secs.length && <Text style={{ textAlign: "center", marginTop: 60, color: MUTED }}>Rien de disponible pour cette taille pour le moment.</Text>}
           {secs.map((sec) => (
-            <View key={sec.key} style={{ marginBottom: 18 }}>
-              <Text style={s.secT}>{sec.title}</Text>
-              {!!sec.sub && <Text style={s.secS}>{sec.sub}</Text>}
+            <View key={sec.key} style={{ marginTop: 34 }}>
+              <View style={{ paddingHorizontal: 20, marginBottom: 16 }}>
+                <Text style={s.secT}>{sec.title}</Text>
+                {!!sec.sub && <Text style={s.secS}>{sec.sub}</Text>}
+              </View>
               <View style={s.pgrid}>
                 {sec.items.map((it) => (
-                  <TouchableOpacity key={it.p.id} style={s.card} onPress={() => onOpen(it)}>
-                    {it.p.images && it.p.images[0] ? <Image source={{ uri: it.p.images[0].thumbnail || it.p.images[0].src }} style={s.cardImg} /> : <View style={s.cardImg} />}
+                  <TouchableOpacity key={it.p.id} style={s.card} onPress={() => onOpen(it)} activeOpacity={0.85}>
+                    <View style={s.cardImgWrap}>
+                      {it.p.images && it.p.images[0] ? <Image source={{ uri: it.p.images[0].thumbnail || it.p.images[0].src }} style={s.cardImg} resizeMode="contain" /> : null}
+                    </View>
                     <Text numberOfLines={2} style={s.cardName}>{it.p.name}</Text>
                     <Text style={s.cardPrice}>{fmt(price(it.p))}</Text>
                   </TouchableOpacity>
@@ -145,6 +176,14 @@ function Shop({ size, secs, loading, err, retry, onSize, onOpen, n, onCart }) {
           ))}
         </ScrollView>
       )}
+      {n > 0 && !loading && (
+        <View style={s.cartBarWrap} pointerEvents="box-none">
+          <TouchableOpacity style={s.cartBar} onPress={onCart} activeOpacity={0.9}>
+            <Text style={s.cartBarL}>Voir le panier · {n} article{n > 1 ? "s" : ""}</Text>
+            <Text style={s.cartBarR}>{fmt(total)}</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </View>
   );
 }
@@ -153,26 +192,33 @@ function Detail({ it, onClose, onAdd }) {
   const { p, opts } = it;
   const [sel, setSel] = useState(opts.length === 1 ? opts[0] : null);
   const img = p.images && p.images[0] && p.images[0].src;
+  const need = opts.length > 1 && !sel;
   return (
     <View style={s.modal}>
+      <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={onClose} />
       <View style={s.sheet}>
-        {!!img && <Image source={{ uri: img }} style={{ width: "100%", height: 260, borderRadius: 12 }} resizeMode="cover" />}
-        <Text style={s.h2}>{p.name}</Text>
-        <Text style={s.cardPrice}>{fmt(price(p))}</Text>
+        <TouchableOpacity onPress={onClose} style={s.close} hitSlop={12}><Feather name="x" size={22} color={INK} /></TouchableOpacity>
+        <View style={s.detailImg}>{!!img && <Image source={{ uri: img }} style={{ width: "100%", height: "100%" }} resizeMode="contain" />}</View>
+        <Text style={s.detailName}>{p.name}</Text>
+        <Text style={s.detailPrice}>{fmt(price(p))}</Text>
         {opts.length > 1 && (
-          <View style={{ flexDirection: "row", flexWrap: "wrap", marginVertical: 10 }}>
-            {opts.map((o) => (
-              <TouchableOpacity key={o.value} onPress={() => setSel(o)} style={[s.opt, sel && sel.value === o.value && s.optOn]}>
-                <Text style={{ color: sel && sel.value === o.value ? "#fff" : DARK }}>{o.label}</Text>
-              </TouchableOpacity>
-            ))}
+          <View style={{ marginTop: 18 }}>
+            <Text style={s.label}>Votre modèle de montre</Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 8, marginHorizontal: -4 }}>
+              {opts.map((o) => {
+                const on = sel && sel.value === o.value;
+                return (
+                  <TouchableOpacity key={o.value} onPress={() => setSel(o)} style={[s.opt, on && s.optOn]}>
+                    <Text style={{ color: on ? "#fff" : INK, fontSize: 14 }}>{o.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
           </View>
         )}
-        <TouchableOpacity style={[s.btn, opts.length > 1 && !sel && { opacity: 0.4 }]} disabled={opts.length > 1 && !sel}
-          onPress={() => onAdd(p, sel || opts[0] || null)}>
-          <Text style={s.btnTxt}>Ajouter au panier</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={onClose} style={{ padding: 14 }}><Text style={{ textAlign: "center", color: "#666" }}>Fermer</Text></TouchableOpacity>
+        <View style={{ marginTop: 22 }}>
+          <Btn label="Ajouter au panier" disabled={need} onPress={() => onAdd(p, sel || opts[0] || null)} />
+        </View>
       </View>
     </View>
   );
@@ -184,107 +230,128 @@ function Cart({ cart, qty, back, onDone }) {
   const sub = cartSubtotal(cart), disc = cartDiscount(cart);
   const set = (k) => (v) => setF((x) => ({ ...x, [k]: v }));
   async function go() {
-    if (!f.name.trim() || !f.phone.trim() || !f.address.trim()) { Alert.alert("Il manque des infos", "Nom, téléphone et adresse de livraison sont obligatoires."); return; }
+    if (!f.name.trim() || !f.phone.trim() || !f.address.trim()) { Alert.alert("Informations manquantes", "Indiquez votre nom, votre téléphone et votre adresse de livraison."); return; }
     setBusy(true);
     try { onDone(await placeOrder(cart, f)); }
-    catch (e) { Alert.alert("Commande impossible", e.message || "Réessaie ou écris-nous sur WhatsApp."); }
+    catch (e) { Alert.alert("Commande impossible", (e.message || "Une erreur est survenue.") + "\n\nVous pouvez aussi nous écrire sur WhatsApp."); }
     setBusy(false);
   }
   return (
-    <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 60 }} keyboardShouldPersistTaps="handled">
-      <TouchableOpacity onPress={back}><Text style={{ color: ORANGE, fontWeight: "700" }}>← Continuer mes achats</Text></TouchableOpacity>
-      <Text style={s.h2}>Mon panier</Text>
-      {!cart.length && <Text style={{ color: "#666", marginVertical: 20 }}>Ton panier est vide.</Text>}
-      {cart.map((l) => (
-        <View key={l.key} style={s.line}>
-          {l.img ? <Image source={{ uri: l.img }} style={{ width: 56, height: 56, borderRadius: 8 }} /> : <View style={{ width: 56, height: 56 }} />}
-          <View style={{ flex: 1, marginHorizontal: 10 }}>
-            <Text numberOfLines={2} style={{ fontWeight: "600" }}>{l.name}</Text>
-            <Text style={{ color: "#666" }}>{l.label ? l.label + " · " : ""}{fmt(l.price)}</Text>
+    <View style={{ flex: 1, backgroundColor: PAPER }}>
+      <View style={s.header}>
+        <TouchableOpacity onPress={back} style={s.hIcon} hitSlop={10}><Feather name="arrow-left" size={22} color={INK} /></TouchableOpacity>
+        <Text style={{ fontFamily: SERIF, fontSize: 20, color: INK }}>Panier</Text>
+        <View style={s.hIcon} />
+      </View>
+      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 70 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        {!cart.length && <Text style={{ color: MUTED, marginVertical: 40, textAlign: "center" }}>Votre panier est vide.</Text>}
+        {cart.map((l) => (
+          <View key={l.key} style={s.line}>
+            <View style={s.lineImg}>{l.img ? <Image source={{ uri: l.img }} style={{ width: "100%", height: "100%" }} resizeMode="contain" /> : null}</View>
+            <View style={{ flex: 1, marginHorizontal: 14 }}>
+              <Text numberOfLines={2} style={{ color: INK, fontSize: 15 }}>{l.name}</Text>
+              {!!l.label && <Text style={{ color: MUTED, fontSize: 13, marginTop: 2 }}>{l.label}</Text>}
+              <Text style={{ color: INK, fontFamily: SERIF, fontSize: 16, marginTop: 6 }}>{fmt(l.price)}</Text>
+            </View>
+            <View style={s.stepper}>
+              <TouchableOpacity onPress={() => qty(l.key, -1)} hitSlop={8}><Feather name="minus" size={16} color={INK} /></TouchableOpacity>
+              <Text style={{ minWidth: 26, textAlign: "center", color: INK }}>{l.qty}</Text>
+              <TouchableOpacity onPress={() => qty(l.key, 1)} hitSlop={8}><Feather name="plus" size={16} color={INK} /></TouchableOpacity>
+            </View>
           </View>
-          <TouchableOpacity onPress={() => qty(l.key, -1)} style={s.q}><Text>−</Text></TouchableOpacity>
-          <Text style={{ width: 24, textAlign: "center" }}>{l.qty}</Text>
-          <TouchableOpacity onPress={() => qty(l.key, 1)} style={s.q}><Text>+</Text></TouchableOpacity>
-        </View>
-      ))}
-      {!!cart.length && (
-        <>
-          <View style={s.tot}>
-            <Row a="Sous-total" b={fmt(sub)} />
-            {disc > 0 && <Row a="Remise lot" b={"− " + fmt(disc)} green />}
-            <Row a="Total (hors livraison)" b={fmt(sub - disc)} bold />
-            <Text style={{ color: "#666", marginTop: 6, fontSize: 12 }}>Livraison calculée à la commande · paiement à la livraison</Text>
-          </View>
-          <Text style={s.h2}>Livraison</Text>
-          <Field l="Nom complet *" v={f.name} on={set("name")} />
-          <Field l="Téléphone *" v={f.phone} on={set("phone")} kb="phone-pad" />
-          <Field l="Adresse / quartier *" v={f.address} on={set("address")} />
-          <Field l="Ville" v={f.city} on={set("city")} />
-          <Field l="Email (facultatif)" v={f.email} on={set("email")} kb="email-address" />
-          <Field l="Note (facultatif)" v={f.note} on={set("note")} />
-          <TouchableOpacity style={[s.btn, busy && { opacity: 0.5 }]} disabled={busy} onPress={go}>
-            {busy ? <ActivityIndicator color="#fff" /> : <Text style={s.btnTxt}>Commander</Text>}
-          </TouchableOpacity>
-        </>
-      )}
-    </ScrollView>
+        ))}
+        {!!cart.length && (
+          <>
+            <View style={{ marginTop: 22 }}>
+              <Row a="Sous-total" b={fmt(sub)} />
+              {disc > 0 && <Row a="Remise sur le lot" b={"− " + fmt(disc)} accent />}
+              <View style={{ height: 1, backgroundColor: LINE, marginVertical: 12 }} />
+              <Row a="Total" b={fmt(sub - disc)} big />
+              <Text style={{ color: MUTED, marginTop: 8, fontSize: 13 }}>Livraison calculée à la commande. Paiement à la livraison.</Text>
+            </View>
+            <Text style={[s.secT, { marginTop: 36, marginBottom: 4 }]}>Livraison</Text>
+            <Field l="Nom complet" v={f.name} on={set("name")} />
+            <Field l="Téléphone" v={f.phone} on={set("phone")} kb="phone-pad" />
+            <Field l="Adresse ou quartier" v={f.address} on={set("address")} />
+            <Field l="Ville" v={f.city} on={set("city")} />
+            <Field l="Email (facultatif)" v={f.email} on={set("email")} kb="email-address" />
+            <Field l="Note (facultatif)" v={f.note} on={set("note")} />
+            <View style={{ marginTop: 28 }}><Btn label="Commander" busy={busy} onPress={go} /></View>
+          </>
+        )}
+      </ScrollView>
+    </View>
   );
 }
-const Row = ({ a, b, bold, green }) => (
-  <View style={{ flexDirection: "row", justifyContent: "space-between", marginVertical: 2 }}>
-    <Text style={{ fontWeight: bold ? "800" : "400" }}>{a}</Text>
-    <Text style={{ fontWeight: bold ? "800" : "400", color: green ? "#1a7f37" : DARK }}>{b}</Text>
+const Row = ({ a, b, big, accent }) => (
+  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", marginVertical: 3 }}>
+    <Text style={{ color: accent ? COPPER : INK, fontSize: big ? 17 : 15 }}>{a}</Text>
+    <Text style={{ color: accent ? COPPER : INK, fontFamily: big ? SERIF : undefined, fontSize: big ? 22 : 15 }}>{b}</Text>
   </View>
 );
 const Field = ({ l, v, on, kb }) => (
-  <View style={{ marginTop: 10 }}>
-    <Text style={{ color: "#555", marginBottom: 4 }}>{l}</Text>
+  <View style={{ marginTop: 16 }}>
+    <Text style={s.label}>{l}</Text>
     <TextInput value={v} onChangeText={on} keyboardType={kb} autoCapitalize={kb ? "none" : "sentences"} style={s.input} />
   </View>
 );
 
 function Done({ r, onHome }) {
   return (
-    <View style={s.center}>
-      <Text style={{ fontSize: 56 }}>✅</Text>
-      <Text style={s.h1}>Commande envoyée !</Text>
-      <Text style={{ textAlign: "center", marginBottom: 20 }}>Commande n° {r && (r.order_number || r.order_id)}{"\n"}On te contacte très vite pour la livraison.</Text>
-      <TouchableOpacity style={s.btn} onPress={onHome}><Text style={s.btnTxt}>Retour à la boutique</Text></TouchableOpacity>
+    <View style={[s.center, { backgroundColor: PAPER }]}>
+      <Image source={logo} style={{ width: 160, height: 76, resizeMode: "contain" }} />
+      <View style={{ width: 36, height: 1, backgroundColor: COPPER, marginVertical: 26 }} />
+      <Text style={s.display}>Merci !</Text>
+      <Text style={[s.lede, { marginBottom: 6 }]}>Commande n° {r && (r.order_number || r.order_id)}</Text>
+      <Text style={[s.lede, { marginBottom: 32 }]}>Nous vous appelons très vite pour organiser la livraison.</Text>
+      <Btn label="Retour à la boutique" onPress={onHome} light />
     </View>
   );
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#fff", paddingTop: Platform.OS === "android" ? RNStatusBar.currentHeight : 0 },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
-  h1: { fontSize: 22, fontWeight: "800", color: DARK, textAlign: "center", marginTop: 24 },
-  h2: { fontSize: 18, fontWeight: "800", color: DARK, marginTop: 16, marginBottom: 6 },
-  sub: { color: "#666", marginTop: 6, marginBottom: 18 },
-  grid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center" },
-  drop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: "#fff", borderWidth: 2, borderColor: ORANGE, borderRadius: 14, paddingVertical: 16, paddingHorizontal: 18 },
-  dropTxt: { fontSize: 17, fontWeight: "700", color: DARK }, dropArrow: { color: ORANGE, fontSize: 16 },
-  list: { marginTop: 8, borderWidth: 1, borderColor: "#eadfd5", borderRadius: 14, backgroundColor: "#fffaf6", overflow: "hidden" },
-  row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 15, paddingHorizontal: 18, borderBottomWidth: 1, borderColor: "#f0e6dc" },
-  rowTxt: { fontSize: 16, fontWeight: "600", color: DARK },
-  sizeBtn: { width: "44%", margin: "2.5%", paddingVertical: 20, borderRadius: 14, borderWidth: 2, borderColor: ORANGE, alignItems: "center" },
-  sizeTxt: { fontSize: 17, fontWeight: "700", color: DARK },
-  top: { flexDirection: "row", alignItems: "center", padding: 10, borderBottomWidth: 1, borderColor: "#eee" },
-  chip: { flex: 1 }, chipTxt: { fontWeight: "800", fontSize: 16, color: DARK },
-  wa: { backgroundColor: "#25a244", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, marginRight: 8 },
-  cartBtn: { backgroundColor: ORANGE, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 },
-  secT: { fontSize: 18, fontWeight: "800", color: DARK }, secS: { color: ORANGE, marginBottom: 8, fontWeight: "600" },
-  pgrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" },
-  card: { width: "48.5%", marginBottom: 12 },
-  cardImg: { width: "100%", aspectRatio: 1, borderRadius: 12, backgroundColor: "#f2f2f2" },
-  cardName: { marginTop: 6, fontWeight: "600", color: DARK }, cardPrice: { color: ORANGE, fontWeight: "800", marginTop: 2 },
-  modal: { position: "absolute", top: 0, bottom: 0, left: 0, right: 0, backgroundColor: "rgba(0,0,0,.5)", justifyContent: "flex-end" },
-  sheet: { backgroundColor: "#fff", padding: 16, borderTopLeftRadius: 20, borderTopRightRadius: 20 },
-  opt: { borderWidth: 1.5, borderColor: ORANGE, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8, margin: 4 },
-  optOn: { backgroundColor: ORANGE },
-  btn: { backgroundColor: ORANGE, borderRadius: 12, paddingVertical: 14, paddingHorizontal: 24, alignItems: "center", marginTop: 14 },
-  btnTxt: { color: "#fff", fontWeight: "800", fontSize: 16 },
-  line: { flexDirection: "row", alignItems: "center", paddingVertical: 8, borderBottomWidth: 1, borderColor: "#eee" },
-  q: { width: 30, height: 30, borderRadius: 15, backgroundColor: "#eee", alignItems: "center", justifyContent: "center" },
-  tot: { backgroundColor: "#faf6f2", padding: 12, borderRadius: 12, marginTop: 14 },
-  input: { borderWidth: 1, borderColor: "#ddd", borderRadius: 10, padding: 11, fontSize: 16 },
+  root: { flex: 1, backgroundColor: PAPER, paddingTop: Platform.OS === "android" ? RNStatusBar.currentHeight : 0 },
+  center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 28 },
+  display: { fontFamily: SERIF, fontSize: 32, color: INK, textAlign: "center", letterSpacing: 0.3 },
+  lede: { color: MUTED, fontSize: 15, lineHeight: 22, textAlign: "center", marginTop: 12, maxWidth: 320 },
+  label: { color: MUTED, fontSize: 13, letterSpacing: 0.3 },
+  drop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderWidth: 1, borderColor: INK, paddingVertical: 18, paddingHorizontal: 18 },
+  dropTxt: { fontSize: 16, color: INK },
+  list: { borderWidth: 1, borderTopWidth: 0, borderColor: INK },
+  row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 16, paddingHorizontal: 18, borderBottomWidth: 1, borderColor: LINE },
+  rowTxt: { fontSize: 16, color: INK },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 18, paddingVertical: 6 },
+  hIcon: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
+  badge: { position: "absolute", top: 3, right: 1, minWidth: 17, height: 17, borderRadius: 9, backgroundColor: COPPER, alignItems: "center", justifyContent: "center", paddingHorizontal: 4 },
+  badgeTxt: { color: "#fff", fontSize: 10, fontWeight: "700" },
+  sizeBar: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingVertical: 12, backgroundColor: MIST },
+  sizeBarTxt: { color: INK, fontSize: 14 },
+  sizeBarLink: { color: INK, fontSize: 13, textDecorationLine: "underline" },
+  secT: { fontFamily: SERIF, fontSize: 26, color: INK, letterSpacing: 0.2 },
+  secS: { color: COPPER, fontSize: 13, marginTop: 4 },
+  pgrid: { flexDirection: "row", flexWrap: "wrap", paddingHorizontal: 12 },
+  card: { width: "50%", paddingHorizontal: 8, marginBottom: 22 },
+  cardImgWrap: { width: "100%", aspectRatio: 0.9, backgroundColor: MIST, alignItems: "center", justifyContent: "center", overflow: "hidden" },
+  cardImg: { width: "88%", height: "88%" },
+  cardName: { marginTop: 10, color: INK, fontSize: 14, lineHeight: 19 },
+  cardPrice: { marginTop: 3, color: INK, fontFamily: SERIF, fontSize: 16 },
+  cartBarWrap: { position: "absolute", left: 0, right: 0, bottom: 0, padding: 16, paddingBottom: 26 },
+  cartBar: { backgroundColor: INK, flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 17, paddingHorizontal: 20 },
+  cartBarL: { color: "#fff", fontSize: 14, letterSpacing: 0.3 },
+  cartBarR: { color: "#fff", fontFamily: SERIF, fontSize: 17 },
+  modal: { position: "absolute", top: 0, bottom: 0, left: 0, right: 0, backgroundColor: "rgba(20,26,23,.55)", justifyContent: "flex-end" },
+  sheet: { backgroundColor: PAPER, padding: 20, paddingBottom: 34 },
+  close: { position: "absolute", right: 16, top: 14, zIndex: 3, width: 34, height: 34, alignItems: "center", justifyContent: "center", backgroundColor: PAPER, borderRadius: 17 },
+  detailImg: { width: "100%", height: 300, backgroundColor: MIST },
+  detailName: { fontFamily: SERIF, fontSize: 24, color: INK, marginTop: 18, lineHeight: 30 },
+  detailPrice: { fontSize: 17, color: COPPER, marginTop: 6 },
+  opt: { borderWidth: 1, borderColor: LINE, paddingHorizontal: 16, paddingVertical: 11, margin: 4 },
+  optOn: { backgroundColor: INK, borderColor: INK },
+  btn: { backgroundColor: INK, paddingVertical: 17, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: INK },
+  btnLight: { backgroundColor: PAPER },
+  btnTxt: { color: "#fff", fontSize: 14, letterSpacing: 1.2 },
+  line: { flexDirection: "row", alignItems: "center", paddingVertical: 14, borderBottomWidth: 1, borderColor: LINE },
+  lineImg: { width: 68, height: 76, backgroundColor: MIST },
+  stepper: { flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: LINE, paddingHorizontal: 8, paddingVertical: 6 },
+  input: { borderBottomWidth: 1, borderColor: INK, paddingVertical: 10, fontSize: 16, color: INK },
 });
