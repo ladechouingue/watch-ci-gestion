@@ -187,7 +187,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=88;
+var PAGE_V=89;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -218,8 +218,9 @@ function del(coll,id){return api("delete",{coll:coll,id:id}).then(refresh)}
 
 /* ---------- calculs ---------- */
 var MM_RATE=0.01;
-/* Lots : 3 articles à 5 000 F = 10 000 F · 2 articles à 10 000 F = 15 000 F */
-function bundleDisc(items){var n5=0,n10=0;(items||[]).forEach(function(i){if(i.price===5000)n5+=i.qty;else if(i.price===10000)n10+=i.qty});return Math.floor(n5/3)*5000+Math.floor(n10/2)*5000}
+/* Lots : 3 articles à 5 000 F = 10 000 F · 2 articles à 10 000 F = 15 000 F. En novembre 2026 : 1 acheté = 1 offert (même prix) */
+function promoOn(d){d=d||today();return d>="2026-11-01"&&d<="2026-11-30"}
+function bundleDisc(items,d){var n5=0,n10=0;(items||[]).forEach(function(i){if(i.price===5000)n5+=i.qty;else if(i.price===10000)n10+=i.qty});if(promoOn(d))return Math.floor(n5/2)*5000+Math.floor(n10/2)*10000;return Math.floor(n5/3)*5000+Math.floor(n10/2)*5000}
 function mmFee(o){if(!o||!o.paid||!o.mm||o.status==="annule")return 0;var r=0;(o.items||[]).forEach(function(i){r+=i.qty*i.price});return Math.round((r-(o.disc||0))*MM_RATE)}
 function calc(o){var rev=0,cost=0,qty=0;(o.items||[]).forEach(function(i){rev+=i.qty*i.price;cost+=i.qty*(i.cost||0);qty+=i.qty});rev-=(o.disc||0);var mm=mmFee(o);return {rev:rev,cost:cost,qty:qty,mm:mm,profit:rev-cost-(o.fee||0)-mm}}
 function isOpex(e){return e.category!==MARCH}
@@ -681,7 +682,7 @@ function newOrderSheet(oid){
    '<label class="f">Note<input id="o_note" type="text" value="'+(eo?esc(eo.note||""):"")+'"></label>'+
    '<label class="row" style="gap:8px"><input id="o_paid" type="checkbox" style="width:auto"'+(eo&&eo.paid?' checked':'')+'> Commande déjà payée</label>'+
    '<label class="row" id="o_mmw" style="gap:8px"'+(eo&&eo.paid?'':' hidden')+'><input id="o_mm" type="checkbox" style="width:auto"'+(!eo||eo.mm||eo.mm===undefined&&!eo.paid?' checked':'')+'> Payée par mobile money <span class="s" style="color:var(--muted);font-size:13px">(frais de 1 % : <b id="o_mmv">0 F</b>)</span></label>'+
-   '<div class="card"><div class="sum" id="o_discrow" style="display:none"><span>Remise lot (3 pour 10 000 · 2 pour 15 000)</span><span class="num" id="o_disc">0 F</span></div><div class="sum"><span>Total</span><b class="num" id="o_total">0 F</b></div></div>'+
+   '<div class="card"><div class="sum" id="o_discrow" style="display:none"><span>Remise (lot ou 1 acheté = 1 offert)</span><span class="num" id="o_disc">0 F</span></div><div class="sum"><span>Total</span><b class="num" id="o_total">0 F</b></div></div>'+
    '<div class="row"><button class="btn grow" data-act="close" type="button">Annuler</button><button class="btn primary grow" data-act="saveorder" data-id="'+(eo?esc(eo.id):"")+'" type="button">Enregistrer</button></div>');
   if(eo)updateTotals();
 }
@@ -692,7 +693,7 @@ function readRows(){
   });
 }
 function updateTotals(){
-  var rows=readRows(),t=0,c=0,its=[];rows.forEach(function(r){if(r.p&&r.qty){var pr=isNaN(r.price)?r.p.price:r.price;t+=r.qty*pr;c+=r.qty*(r.p.cost||0);its.push({qty:r.qty,price:pr})}});var dd=bundleDisc(its);t-=dd;var dr=$("#o_discrow");if(dr){dr.style.display=dd?"":"none";var dv=$("#o_disc");if(dv)dv.textContent="− "+F(dd)}
+  var rows=readRows(),t=0,c=0,its=[];rows.forEach(function(r){if(r.p&&r.qty){var pr=isNaN(r.price)?r.p.price:r.price;t+=r.qty*pr;c+=r.qty*(r.p.cost||0);its.push({qty:r.qty,price:pr})}});var dd=bundleDisc(its,$("#o_date").value||today());t-=dd;var dr=$("#o_discrow");if(dr){dr.style.display=dd?"":"none";var dv=$("#o_disc");if(dv)dv.textContent="− "+F(dd)}
     var a=$("#o_total"),b=$("#o_profit");if(a)a.textContent=F(t);var mv=$("#o_mmv");if(mv)mv.textContent=F(Math.round(t*MM_RATE));var m=$("#o_mine"),fee=m&&m.checked?(parseFloat(($("#o_fee")||{}).value)||0):0;if(b)b.textContent=F(t-c-fee);
 }
 var saveOrder=guard(function(oid){
@@ -702,7 +703,7 @@ var saveOrder=guard(function(oid){
   var name=$("#o_name").value.trim();if(!name){toast("Indiquez le nom du client.");return}
   if($("#o_fee").value.trim()===""){toast("Indiquez le coût de la livraison (0 s'il n'y en a pas).");return}
   var items=rows.map(function(r){return {pid:r.pid,label:label(r.p),qty:r.qty,price:isNaN(r.price)?r.p.price:r.price,cost:r.p.cost||0}});
-  var o={date:$("#o_date").value||today(),customer:name,phone:$("#o_phone").value.trim(),place:$("#o_place").value.trim(),channel:$("#o_channel").value,items:items,disc:bundleDisc(items),dcost:parseFloat($("#o_fee").value)||0,fee:$("#o_mine").checked?(parseFloat($("#o_fee").value)||0):0,paid:$("#o_paid").checked,mm:$("#o_paid").checked&&$("#o_mm").checked,note:$("#o_note").value.trim(),status:eo?eo.status:"a_livrer",createdAt:eo?(eo.createdAt||new Date().toISOString()):new Date().toISOString()};
+  var o={date:$("#o_date").value||today(),customer:name,phone:$("#o_phone").value.trim(),place:$("#o_place").value.trim(),channel:$("#o_channel").value,items:items,disc:bundleDisc(items,$("#o_date").value||today()),dcost:parseFloat($("#o_fee").value)||0,fee:$("#o_mine").checked?(parseFloat($("#o_fee").value)||0):0,paid:$("#o_paid").checked,mm:$("#o_paid").checked&&$("#o_mm").checked,note:$("#o_note").value.trim(),status:eo?eo.status:"a_livrer",createdAt:eo?(eo.createdAt||new Date().toISOString()):new Date().toISOString()};
   if(eo&&eo.inv)o.inv=eo.inv;
   if(eo){
     var d={};(eo.items||[]).forEach(function(i){d[i.pid]=(d[i.pid]||0)+i.qty});items.forEach(function(i){d[i.pid]=(d[i.pid]||0)-i.qty});

@@ -609,8 +609,8 @@ function catClientSections(PDO $pdo, string $n, string $grp): array {
     }
     $sort = function (array $a) { $a = array_values($a); usort($a, function ($x, $y) { return strcasecmp($x['name'] . $x['color'], $y['name'] . $y['color']); }); return $a; };
     return [
-        ['title' => 'Bracelets 5 000 F', 'foot' => '5 000 F l\'unité  |  3 bracelets pour 10 000 FCFA', 'models' => $sort($br5), 'price' => false],
-        ['title' => 'Bracelets 10 000 F', 'foot' => '10 000 FCFA l\'unité  |  2 bracelets pour 15 000 FCFA', 'models' => $sort($br10), 'price' => false],
+        ['title' => 'Bracelets 5 000 F', 'foot' => promoOn() ? '1 bracelet achete = 1 bracelet offert  |  5 000 F l\'unite' : '5 000 F l\'unité  |  3 bracelets pour 10 000 FCFA', 'models' => $sort($br5), 'price' => false],
+        ['title' => 'Bracelets 10 000 F', 'foot' => promoOn() ? '1 bracelet achete = 1 bracelet offert  |  10 000 F l\'unite' : '10 000 FCFA l\'unité  |  2 bracelets pour 15 000 FCFA', 'models' => $sort($br10), 'price' => false],
         ['title' => 'Coques', 'foot' => 'Coques de protection', 'models' => $sort($co), 'price' => true],
         ['title' => 'Antichocs', 'foot' => 'Protections antichoc', 'models' => $sort($ac), 'price' => true],
     ];
@@ -871,6 +871,24 @@ function wooImportOrders(PDO $pdo, array $c): array {
     return $res;
 }
 
+/* Prix internes alignés sur le site : 3 300 -> 5 000 et 7 500 -> 10 000 (une seule fois) */
+function migratePrices(PDO $pdo): void {
+    if (setting($pdo, 'mig_prices_v89') === '1') { return; }
+    try {
+        $rows = $pdo->query('SELECT id,data FROM products')->fetchAll(PDO::FETCH_ASSOC);
+        $upd = $pdo->prepare('UPDATE products SET data=?, updated=? WHERE id=?');
+        foreach ($rows as $r0) {
+            $d = json_decode((string)$r0['data'], true); if (!is_array($d)) { continue; }
+            $p = (int)round((float)($d['price'] ?? 0)); $np = $p === 3300 ? 5000 : ($p === 7500 ? 10000 : 0);
+            if ($np) { $d['price'] = $np; $upd->execute([json_encode($d, JSON_UNESCAPED_UNICODE), time(), $r0['id']]); }
+        }
+        setSetting($pdo, 'mig_prices_v89', '1');
+    } catch (Throwable $e) { }
+}
+/* Offre « 1 acheté = 1 offert » : du 1er au 30 novembre 2026 */
+function promoOn(?string $date = null): bool { $d = $date ?: date('Y-m-d'); return $d >= '2026-11-01' && $d <= '2026-11-30'; }
+
+migratePrices($pdo);
 switch ($r) {
     case 'state':
         $bkTo = (string)(setting($pdo, 'bk_email') ?? '');
