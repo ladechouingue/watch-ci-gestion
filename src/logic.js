@@ -72,8 +72,8 @@ export function sections(items) {
   const by = (a, b) => String(a.p.name).localeCompare(String(b.p.name), "fr");
   Object.keys(s).forEach((k) => s[k].sort(by));
   return [
-    { key: "b5", title: "Bracelets 5 000 F", sub: "5 000 F l'unité · 3 bracelets pour 10 000 F", items: s.b5 },
-    { key: "b10", title: "Bracelets 10 000 F", sub: "10 000 F l'unité · 2 bracelets pour 15 000 F", items: s.b10 },
+    { key: "b5", title: "Bracelets 5 000 F", sub: promoOn() ? "1 bracelet acheté = 1 offert" : "5 000 F l'unité · 3 bracelets pour 10 000 F", items: s.b5 },
+    { key: "b10", title: "Bracelets 10 000 F", sub: promoOn() ? "1 bracelet acheté = 1 offert" : "10 000 F l'unité · 2 bracelets pour 15 000 F", items: s.b10 },
     { key: "coque", title: "Coques", sub: "", items: s.coque },
     { key: "antichoc", title: "Antichocs", sub: "", items: s.antichoc },
     { key: "accessoire", title: "Autres accessoires", sub: "", items: s.accessoire },
@@ -81,6 +81,11 @@ export function sections(items) {
 }
 
 // Remise lot : 3 bracelets à 5 000 F = 10 000 F ; 2 bracelets à 10 000 F = 15 000 F (accessoires exclus)
+// Offre novembre 2026 : 1 bracelet acheté = 1 bracelet offert (même prix)
+export function promoOn(d) {
+  const day = d || new Date().toISOString().slice(0, 10);
+  return day >= "2026-11-01" && day <= "2026-11-30";
+}
 export function cartDiscount(lines) {
   let n5 = 0, n10 = 0;
   (lines || []).forEach((l) => {
@@ -88,6 +93,7 @@ export function cartDiscount(lines) {
     if (l.price === 5000) n5 += l.qty;
     else if (l.price === 10000) n10 += l.qty;
   });
+  if (promoOn()) return Math.floor(n5 / 2) * 5000 + Math.floor(n10 / 2) * 10000;
   return Math.floor(n5 / 3) * 5000 + Math.floor(n10 / 2) * 5000;
 }
 export const cartSubtotal = (lines) => (lines || []).reduce((s, l) => s + l.price * l.qty, 0);

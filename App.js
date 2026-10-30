@@ -10,7 +10,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { WHATSAPP } from "./src/config";
 import { loadProducts, placeOrder } from "./src/api";
 import {
-  WATCH_SIZES, compatible, sections, price, cartDiscount, cartSubtotal, cartCount, fmt, isAccessory,
+  WATCH_SIZES, compatible, sections, price, promoOn, cartDiscount, cartSubtotal, cartCount, fmt, isAccessory,
 } from "./src/logic";
 
 const logo = require("./assets/logo.png");
@@ -315,7 +315,7 @@ function Cart({ cart, qty, profile, goShop, onDone }) {
           <>
             <View style={{ marginTop: 22 }}>
               <Row a="Sous-total" b={fmt(sub)} />
-              {disc > 0 && <Row a="Remise sur le lot" b={"− " + fmt(disc)} accent />}
+              {disc > 0 && <Row a={promoOn() ? "Bracelet offert" : "Remise sur le lot"} b={"− " + fmt(disc)} accent />}
               <View style={{ height: 1, backgroundColor: LINE, marginVertical: 12 }} />
               <Row a="Total" b={fmt(sub - disc)} big />
               <Text style={{ color: MUTED, marginTop: 8, fontSize: 13 }}>Livraison calculée à la commande. Paiement à la livraison.</Text>
