@@ -871,6 +871,21 @@ function wooImportOrders(PDO $pdo, array $c): array {
     return $res;
 }
 
+/* Une fois : ces 3 bracelets passent à 10 000 F (toutes tailles) */
+function migrateTrois(PDO $pdo): void {
+    if (setting($pdo, 'mig_trois_v94') === '1') { return; }
+    try {
+        $want = ['bracelet silicone aimantee blanc', 'bracelet silicone aimantee noir hold', 'bracelet silicone aimantee noir'];
+        $norm = function (string $t): string { $t = strtolower(trim(preg_replace('/\s+/', ' ', $t))); return strtr($t, ['é' => 'e', 'è' => 'e', 'ê' => 'e', 'à' => 'a', 'É' => 'e']); };
+        $upd = $pdo->prepare('UPDATE products SET data=?, updated=? WHERE id=?');
+        foreach ($pdo->query('SELECT id,data FROM products')->fetchAll(PDO::FETCH_ASSOC) as $r0) {
+            $d = json_decode((string)$r0['data'], true); if (!is_array($d)) { continue; }
+            if (in_array($norm((string)($d['name'] ?? '')), $want, true) && (int)round((float)($d['price'] ?? 0)) !== 10000) { $d['price'] = 10000; $upd->execute([json_encode($d, JSON_UNESCAPED_UNICODE), time(), $r0['id']]); }
+        }
+        setSetting($pdo, 'mig_trois_v94', '1');
+    } catch (Throwable $e) { }
+}
+migrateTrois($pdo);
 switch ($r) {
     case 'state':
         $bkTo = (string)(setting($pdo, 'bk_email') ?? '');
