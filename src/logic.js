@@ -26,7 +26,11 @@ export const isAccessory = (p) => kindOf(p) !== "bracelet";
 export function price(p) {
   const pr = p.prices || {};
   const minor = pr.currency_minor_unit == null ? 0 : pr.currency_minor_unit;
-  return Math.round(parseInt(pr.price || "0", 10) / Math.pow(10, minor));
+  const div = Math.pow(10, minor);
+  const n = (v) => Math.round(parseInt(v || "0", 10) / div) || 0;
+  // Produit variable : le prix du parent peut être vide côté site, on prend alors la fourchette ou le prix régulier.
+  const r = pr.price_range || {};
+  return n(pr.price) || n(r.min_amount) || n(pr.regular_price) || n(r.max_amount);
 }
 
 // Options de taille d'un produit : [{label, value, id}] (value = valeur envoyée au panier)
