@@ -187,7 +187,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=89;
+var PAGE_V=90;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -573,8 +573,36 @@ var wooRep=guard(function(){
 function pricesSheet(){
   var row=function(i,a,b){return '<div class="grid2"><label class="f">Ancien prix (F)<input class="pr_from" type="number" inputmode="numeric" value="'+a+'"></label><label class="f">Nouveau prix (F)<input class="pr_to" type="number" inputmode="numeric" value="'+b+'"></label></div>'};
   openSheet('<h2>Changer les prix</h2><p class="s" style="color:var(--muted)">Tous les produits qui ont l\'ancien prix passent au nouveau. Les commandes déjà faites ne changent pas. Ensuite, « Envoyer le stock au site » met aussi les prix à jour sur WooCommerce.</p>'+row(0,3300,5000)+row(1,7500,10000)+
-    '<div class="row"><button class="btn grow" data-act="close" type="button">Annuler</button><button class="btn primary grow" data-act="pricesgo" type="button">Appliquer</button></div>');
+    '<div class="row"><button class="btn grow" data-act="close" type="button">Annuler</button><button class="btn primary grow" data-act="pricesgo" type="button">Appliquer</button></div>'+
+    '<div class="row" style="margin-top:8px"><button class="btn grow" data-act="priceaudit" type="button">Contrôler tous les prix des bracelets</button></div>');
 }
+/* Contrôle : tout bracelet doit être à 5 000 ou 10 000 F, et toutes les tailles d'un même modèle au même prix */
+function snapPrice(v){v=Math.round(parseFloat(v)||0);if(v===3300)return 5000;if(v===7500)return 10000;return v>=7000?10000:5000}
+function priceIssues(){
+  var gs={};
+  products.forEach(function(p){var c=String(p.category||"").split("|")[0];if(c!=="Bracelet"&&c!=="Bracelet femme")return;var g=String(p.g||p.id);(gs[g]=gs[g]||[]).push(p)});
+  var out=[];
+  Object.keys(gs).forEach(function(g){
+    var rows=gs[g],ps=rows.map(function(p){return Math.round(parseFloat(p.price)||0)}),uniq=ps.filter(function(v,i){return ps.indexOf(v)===i});
+    var ok=uniq.length===1&&(uniq[0]===5000||uniq[0]===10000);
+    if(ok)return;
+    var target=Math.max.apply(null,uniq.map(snapPrice));
+    out.push({g:g,name:rows[0].name+(rows[0].color?" · "+rows[0].color:""),prices:uniq,target:target,rows:rows});
+  });
+  return out;
+}
+function priceAudit(){
+  var it=priceIssues();
+  if(!it.length){openSheet('<h2>Contrôle des prix</h2><p>Tous les bracelets sont à 5 000 F ou 10 000 F, sur toutes les tailles.</p><div class="row"><button class="btn grow" data-act="close">Fermer</button></div>');return}
+  openSheet('<h2>Contrôle des prix</h2><p class="s" style="color:var(--muted)">'+it.length+' modèle'+(it.length>1?'s':'')+' à corriger. Le prix proposé est le plus haut trouvé, ramené à 5 000 ou 10 000 F.</p>'+
+    it.map(function(x){return '<div class="item"><div class="grow"><b>'+esc(x.name)+'</b><div class="s" style="color:var(--muted)">Prix actuels : '+x.prices.map(function(v){return F(v)}).join(" / ")+' → <b>'+F(x.target)+'</b></div></div></div>'}).join("")+
+    '<div class="row"><button class="btn grow" data-act="close">Fermer</button><button class="btn primary grow" data-act="pricefix">Tout corriger</button></div>');
+}
+var priceFix=guard(function(){
+  var it=priceIssues(),chain=Promise.resolve(),n=0;
+  it.forEach(function(x){x.rows.forEach(function(p){if(Math.round(parseFloat(p.price)||0)===x.target)return;n++;var d=Object.assign({},p);delete d.id;d.price=x.target;chain=chain.then(function(){return api("save",{coll:"products",id:p.id,data:d})})})});
+  return chain.then(refresh).then(function(){closeSheet();toast(n+" ligne"+(n>1?"s":"")+" corrigée"+(n>1?"s":"")+". Pensez à « Tout synchroniser maintenant ».")});
+});
 var pricesGo=guard(function(){
   var f=document.querySelectorAll(".pr_from"),t=document.querySelectorAll(".pr_to"),map={};
   for(var i=0;i<f.length;i++){var a=parseFloat(f[i].value),b=parseFloat(t[i].value);if(a>0&&b>0)map[a]=b}
@@ -845,6 +873,8 @@ document.addEventListener("click",function(e){
     case "wooplan":wooPlan();break;
     case "woosync":wooSync();break;
     case "prices":pricesSheet();break;
+    case "priceaudit":priceAudit();break;
+    case "pricefix":priceFix();break;
     case "pricesgo":pricesGo();break;
     case "woorep":wooRep();break;
     case "woopush":wooPush();break;

@@ -607,6 +607,7 @@ function catClientSections(PDO $pdo, string $n, string $grp): array {
             if ($cat === 'Coque') { $co[$g] = $m; } else { $ac[$g] = $m; }
         }
     }
+    foreach ($br10 as $gk => $_m) { unset($br5[$gk]); } /* un modèle à 10 000 F sur une taille ne doit pas rester à 5 000 F */
     $sort = function (array $a) { $a = array_values($a); usort($a, function ($x, $y) { return strcasecmp($x['name'] . $x['color'], $y['name'] . $y['color']); }); return $a; };
     return [
         ['title' => 'Bracelets 5 000 F', 'foot' => promoOn() ? '1 bracelet achete = 1 bracelet offert  |  5 000 F l\'unite' : '5 000 F l\'unité  |  3 bracelets pour 10 000 FCFA', 'models' => $sort($br5), 'price' => false],
