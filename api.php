@@ -886,10 +886,36 @@ function migratePrices(PDO $pdo): void {
         setSetting($pdo, 'mig_prices_v89', '1');
     } catch (Throwable $e) { }
 }
+/* Bracelets : le prix est celui du modèle (toutes tailles). Ancien 3 300 -> 5 000, ancien 7 500 -> 10 000 ; une seule fois */
+function migratePricesModels(PDO $pdo): void {
+    if (setting($pdo, 'mig_prices_v90') === '1') { return; }
+    try {
+        $snap = function (float $v): int { $v = (int)round($v); if ($v === 3300) { return 5000; } if ($v === 7500) { return 10000; } return $v >= 7000 ? 10000 : 5000; };
+        $rows = $pdo->query('SELECT id,data FROM products')->fetchAll(PDO::FETCH_ASSOC);
+        $grp = [];
+        foreach ($rows as $r0) {
+            $d = json_decode((string)$r0['data'], true); if (!is_array($d)) { continue; }
+            $c = (string)($d['category'] ?? ''); $c = strpos($c, '|') !== false ? explode('|', $c)[0] : $c;
+            if ($c !== 'Bracelet' && $c !== 'Bracelet femme') { continue; }
+            $g = (string)($d['g'] ?? $r0['id']);
+            $grp[$g] = max($grp[$g] ?? 0, $snap((float)($d['price'] ?? 0)));
+        }
+        $upd = $pdo->prepare('UPDATE products SET data=?, updated=? WHERE id=?');
+        foreach ($rows as $r0) {
+            $d = json_decode((string)$r0['data'], true); if (!is_array($d)) { continue; }
+            $c = (string)($d['category'] ?? ''); $c = strpos($c, '|') !== false ? explode('|', $c)[0] : $c;
+            if ($c !== 'Bracelet' && $c !== 'Bracelet femme') { continue; }
+            $g = (string)($d['g'] ?? $r0['id']);
+            if ((int)round((float)($d['price'] ?? 0)) !== $grp[$g]) { $d['price'] = $grp[$g]; $upd->execute([json_encode($d, JSON_UNESCAPED_UNICODE), time(), $r0['id']]); }
+        }
+        setSetting($pdo, 'mig_prices_v90', '1');
+    } catch (Throwable $e) { }
+}
 /* Offre « 1 acheté = 1 offert » : du 1er au 30 novembre 2026 */
 function promoOn(?string $date = null): bool { $d = $date ?: date('Y-m-d'); return $d >= '2026-11-01' && $d <= '2026-11-30'; }
 
 migratePrices($pdo);
+migratePricesModels($pdo);
 switch ($r) {
     case 'state':
         $bkTo = (string)(setting($pdo, 'bk_email') ?? '');
