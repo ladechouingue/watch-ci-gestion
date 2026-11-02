@@ -1136,6 +1136,32 @@ switch ($r) {
         out(['ok' => true]);
     }
 
+    case 'restore_prices': {
+        if (!$isPost) { fail('POST requis.', 405); }
+        if (empty($_FILES['file']) || (int)$_FILES['file']['error'] !== UPLOAD_ERR_OK) { fail('Fichier non reçu.'); }
+        @ini_set('memory_limit', '512M'); @set_time_limit(300);
+        $tmpf = $_FILES['file']['tmp_name']; $j = null;
+        if (substr((string)file_get_contents($tmpf, false, null, 0, 2), 0, 2) === 'PK') {
+            if (!class_exists('ZipArchive')) { fail('Le serveur ne sait pas lire les fichiers .zip.'); }
+            $zr = new ZipArchive(); if ($zr->open($tmpf) !== true) { fail('Fichier .zip illisible.'); }
+            $j = json_decode((string)$zr->getFromName('backup.json'), true);
+        } else { $j = json_decode((string)file_get_contents($tmpf), true); }
+        if (!is_array($j) || !isset($j['products']) || !is_array($j['products'])) { fail('Ce fichier n\'est pas une sauvegarde valide.'); }
+        $old = []; foreach ($j['products'] as $d) { if (is_array($d) && isset($d['id'])) { $old[(string)$d['id']] = (float)($d['price'] ?? 0); } }
+        $sel = $pdo->query('SELECT id,data FROM products')->fetchAll(PDO::FETCH_ASSOC);
+        $upd = $pdo->prepare('UPDATE products SET data=?, updated=? WHERE id=?'); $n = 0;
+        $pdo->beginTransaction();
+        try {
+            foreach ($sel as $r0) {
+                $id = (string)$r0['id']; if (!isset($old[$id])) { continue; }
+                $d = json_decode((string)$r0['data'], true); if (!is_array($d)) { continue; }
+                if ((float)($d['price'] ?? 0) !== $old[$id]) { $d['price'] = $old[$id]; $upd->execute([json_encode($d, JSON_UNESCAPED_UNICODE), time(), $r0['id']]); $n++; }
+            }
+            $pdo->commit();
+        } catch (Throwable $e) { $pdo->rollBack(); fail('Impossible : ' . $e->getMessage(), 500); }
+        out(['ok' => true, 'changed' => $n]);
+    }
+
     case 'restore': {
         if (!$isPost) { fail('POST requis.', 405); }
         if (empty($_FILES['file']) || (int)$_FILES['file']['error'] !== UPLOAD_ERR_OK) { fail('Fichier non reçu (trop gros pour l\'hébergement ?).'); }

@@ -187,7 +187,7 @@ var dateLabel=function(d){return new Date(d+"T12:00:00Z").toLocaleDateString("fr
 var addMonths=function(k,n){var y=+k.slice(0,4),m=+k.slice(5,7)-1+n;var d=new Date(Date.UTC(y,m,1));return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")};
 var uid=function(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5)};
 
-var PAGE_V=92;
+var PAGE_V=93;
 var appVersion="",updInfo=null,authed=false, products=[], orders=[], expenses=[], tab="home", month=today().slice(0,7), ofilter="all", q="";
 var META="Publicité Meta (Facebook et Instagram)";
 var CHANNELS=["Site web","WhatsApp","Facebook","Instagram","TikTok","Autre"];
@@ -481,7 +481,7 @@ function bkSheet(){
       '<div class="s" style="color:var(--muted)">'+(j.last?'Dernier envoi : '+esc(j.last):'Aucun envoi pour le moment.')+'</div>'+
       '<div class="row"><button class="btn primary grow" data-act="bksave" type="button">Enregistrer</button><button class="btn grow" data-act="bktest" type="button">Envoyer un test</button></div>'+
       '<details class="card"><summary><b>Pour un envoi garanti chaque nuit</b></summary><p class="s" style="color:var(--muted)">Sans réglage, l\'envoi se fait à la première ouverture de l\'outil chaque jour. Pour qu\'il parte même sans ouvrir l\'outil : cPanel &gt; Tâches Cron &gt; « Une fois par jour » &gt; collez cette commande.</p><textarea readonly rows="4" id="bk_cron" style="font-size:12px">'+esc(j.cron)+'</textarea><button class="btn small" data-act="bkcopy" type="button">Copier la commande</button></details>'+
-      '<div class="card" style="display:flex;flex-direction:column;gap:8px"><h3>Restaurer une sauvegarde</h3><p class="s" style="color:var(--muted)">Nouvel hébergement ? Installez l\'outil, créez un mot de passe provisoire, puis choisissez ici le fichier reçu par e-mail. Tout est remis en place (données, photos, catalogues, réglages) et votre ancien mot de passe revient.</p><input id="bk_file" type="file" accept=".zip,.json,application/zip,application/json"><button class="btn danger" data-act="bkrestore" data-confirm="Remplacer toutes les données actuelles ?" type="button">Restaurer</button></div>'+
+      '<div class="card" style="display:flex;flex-direction:column;gap:8px"><h3>Restaurer une sauvegarde</h3><p class="s" style="color:var(--muted)">Nouvel hébergement ? Installez l\'outil, créez un mot de passe provisoire, puis choisissez ici le fichier reçu par e-mail. Tout est remis en place (données, photos, catalogues, réglages) et votre ancien mot de passe revient.</p><input id="bk_file" type="file" accept=".zip,.json,application/zip,application/json"><button class="btn danger" data-act="bkrestore" data-confirm="Remplacer toutes les données actuelles ?" type="button">Restaurer</button><button class="btn primary" data-act="bkprices" type="button">Restaurer seulement les prix</button><p class="s" style="color:var(--muted)">« Seulement les prix » remet les prix de la sauvegarde et ne touche ni aux commandes, ni au stock, ni aux dépenses.</p></div>'+
       '<div class="row"><button class="btn grow" data-act="close" type="button">Fermer</button></div>');
   }).catch(function(e){openSheet('<h2>Sauvegarde par e-mail</h2><div class="empty">'+esc(e.message)+'</div><div class="row"><button class="btn grow" data-act="close">Fermer</button></div>')});
 }
@@ -833,6 +833,8 @@ document.addEventListener("click",function(e){
     case "setpaid":setPaid(id,b.dataset.v);break;
     case "bkrestore":{var f=$("#bk_file").files&&$("#bk_file").files[0];if(!f){toast("Choisissez le fichier de sauvegarde.");break}var fd=new FormData();fd.append("file",f);b.disabled=true;b.textContent="Restauration…";
       api("restore",undefined,fd).then(function(r){return refresh().then(function(){closeSheet();toast("Restauré : "+r.products+" produits, "+r.orders+" commandes, "+r.expenses+" dépenses, "+r.photos+" photos, "+(r.catalogues||0)+" catalogues.")})}).catch(function(e){b.disabled=false;b.textContent="Restaurer";toast(e.message)});break}
+    case "bkprices":{var f2=$("#bk_file").files&&$("#bk_file").files[0];if(!f2){toast("Choisissez le fichier de sauvegarde.");break}var fd2=new FormData();fd2.append("file",f2);b.disabled=true;b.textContent="Restauration des prix…";
+      api("restore_prices",undefined,fd2).then(function(r){return refresh().then(function(){closeSheet();toast(r.changed+" prix remis comme dans la sauvegarde. Pensez à « Tout synchroniser maintenant ».")})}).catch(function(e){b.disabled=false;b.textContent="Restaurer seulement les prix";toast(e.message)});break}
     case "settings":settingsSheet();break;
     case "inv":invSheet();break;
     case "ivsave":{var lf=$("#iv_logo").files&&$("#iv_logo").files[0];b.disabled=true;b.textContent="Enregistrement…";
