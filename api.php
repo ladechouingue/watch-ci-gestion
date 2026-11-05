@@ -315,6 +315,13 @@ if ($r === 'woo_hook') {
 }
 if ($isPost && ($_SERVER['HTTP_X_GESTION'] ?? '') !== '1') { fail('Requête refusée.', 403); }
 
+/* Mot de passe oublié : déposer data/reset-mdp.txt (le nouveau mot de passe, 8 caractères minimum) ; il est appliqué puis le fichier est supprimé */
+$rf = $dataDir . '/reset-mdp.txt';
+if (is_file($rf)) {
+    $np = trim((string)@file_get_contents($rf));
+    if (strlen($np) >= 8) { setSetting($pdo, 'password_hash', password_hash($np, PASSWORD_DEFAULT)); setSetting($pdo, 'fails', '0'); setSetting($pdo, 'lock_until', '0'); }
+    @unlink($rf);
+}
 $hash = setting($pdo, 'password_hash');
 $authed = !empty($_SESSION['ok']);
 
