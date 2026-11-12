@@ -86,9 +86,8 @@ export function sections(items) {
 
 // Remise lot : 3 bracelets à 5 000 F = 10 000 F ; 2 bracelets à 10 000 F = 15 000 F (accessoires exclus)
 // Offre novembre 2026 : 1 bracelet acheté = 1 bracelet offert (même prix)
-export function promoOn(d) {
-  const day = d || new Date().toISOString().slice(0, 10);
-  return day >= "2026-11-01" && day <= "2026-11-30";
+export function promoOn() {
+  return false; // offre 1 acheté = 1 offert terminée
 }
 export function cartDiscount(lines) {
   let n5 = 0, n10 = 0;
