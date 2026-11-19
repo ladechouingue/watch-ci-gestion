@@ -143,9 +143,7 @@ function Hero({ children }) {
 function HeroLogo() {
   return (
     <View style={{ alignItems: "center" }}>
-      <View style={{ backgroundColor: "rgba(255,255,255,0.95)", borderRadius: 18, paddingHorizontal: 18, paddingVertical: 8 }}>
-        <Image source={logo} style={{ width: 150, height: 64, resizeMode: "contain" }} />
-      </View>
+      <Image source={logo} style={{ width: 84, height: 140, resizeMode: "contain" }} />
       <View style={{ width: 36, height: 1, backgroundColor: "#E0702F", marginVertical: 22 }} />
     </View>
   );
