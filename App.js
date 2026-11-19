@@ -26,7 +26,7 @@ export default function App() {
   const [err, setErr] = useState("");
   const [size, setSize] = useState(null);
   const [cart, setCart] = useState([]);
-  const [screen, setScreen] = useState("home"); // home | size | shop | cart | done
+  const [screen, setScreen] = useState("home"); // home (taille) | cat | shop | cart | done
   const [cat, setCat] = useState(null); // bracelet | chargeur | protection
   const [pick, setPick] = useState(null); // produit ouvert
   const [ready, setReady] = useState(false);
@@ -58,10 +58,10 @@ export default function App() {
   }
   function chooseCat(c) {
     setCat(c.key); AsyncStorage.setItem("cat", c.key).catch(() => {});
-    setScreen("size");
+    setScreen("shop");
   }
   function chooseSize(s) {
-    setSize(s); setScreen("shop"); AsyncStorage.setItem("size", s.key).catch(() => {});
+    setSize(s); setScreen("cat"); AsyncStorage.setItem("size", s.key).catch(() => {});
   }
   function add(p, opt) {
     const key = p.id + "|" + (opt ? opt.value : "");
@@ -86,20 +86,20 @@ export default function App() {
   const n = cartCount(cart);
   const saveProfile = (p) => { setProfile(p); AsyncStorage.setItem("profile", JSON.stringify(p)).catch(() => {}); };
   const tab = pick ? "shop" : screen === "done" ? "cart" : screen;
-  const go = (t) => { if (t === "wa") { Linking.openURL("https://wa.me/" + WHATSAPP); return; } setPick(null); setScreen(t === "shop" && (!size || !cat) ? "home" : t); };
+  const go = (t) => { if (t === "wa") { Linking.openURL("https://wa.me/" + WHATSAPP); return; } setPick(null); setScreen(t === "shop" && !size ? "home" : t === "shop" && !cat ? "cat" : t); };
 
   if (!ready) return <View style={s.center}><ActivityIndicator color="#141A17" /></View>;
 
   return (
     <SafeAreaProvider>
-    <SafeAreaView style={s.root} edges={screen === "home" ? [] : ["top"]}>
-      <StatusBar style={screen === "home" ? "light" : "dark"} />
+    <SafeAreaView style={s.root} edges={screen === "home" || screen === "cat" ? [] : ["top"]}>
+      <StatusBar style={screen === "home" || screen === "cat" ? "light" : "dark"} />
       <View style={{ flex: 1 }}>
-        {screen === "home" && <Home onCat={chooseCat} />}
-        {screen === "size" && <SizeStep cat={cat} size={size} onPick={chooseSize} onBack={() => setScreen("home")} />}
+        {screen === "home" && <Home size={size} onPick={chooseSize} />}
+        {screen === "cat" && <CatStep size={size} onCat={chooseCat} onBack={() => setScreen("home")} />}
         {screen === "shop" && (
           <Shop size={size} cat={cat} secs={secs} loading={!products && !err} err={err} retry={load}
-            onSize={() => setScreen("size")} onOpen={setPick} />
+            onSize={() => setScreen("home")} onCatChange={() => setScreen("cat")} onOpen={setPick} />
         )}
         {screen === "cart" && (
           <Cart cart={cart} qty={qty} profile={profile} goShop={() => go("shop")}
@@ -129,59 +129,45 @@ function Btn({ label, onPress, disabled, busy, light }) {
   );
 }
 
-function Home({ onCat }) {
+function Hero({ children }) {
   const insets = useSafeAreaInsets();
   return (
     <ImageBackground source={{ uri: HERO }} style={{ flex: 1, backgroundColor: "#2A2320" }} resizeMode="cover">
       <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(10,8,6,0.55)" }} />
-      <ScrollView contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 24, paddingTop: insets.top + 24, paddingBottom: 170 }} showsVerticalScrollIndicator={false}>
-        <View style={{ alignItems: "center" }}>
-          <View style={{ backgroundColor: "rgba(255,255,255,0.95)", borderRadius: 18, paddingHorizontal: 18, paddingVertical: 8 }}>
-            <Image source={logo} style={{ width: 150, height: 64, resizeMode: "contain" }} />
-          </View>
-          <View style={{ width: 36, height: 1, backgroundColor: "#E0702F", marginVertical: 22 }} />
-          <Text style={[s.display, { color: "#fff" }]}>Watch Côte d'Ivoire</Text>
-          <Text style={[s.lede, { color: "rgba(255,255,255,0.85)" }]}>Vente de bracelets et accessoires pour Apple Watch</Text>
-        </View>
-        <View style={{ marginTop: 40 }}>
-          {CATS.map((c) => (
-            <TouchableOpacity key={c.key} style={s.catCard} activeOpacity={0.88} onPress={() => onCat(c)}>
-              <View style={s.catIcon}><Feather name={c.icon} size={24} color="#fff" /></View>
-              <View style={{ flex: 1 }}>
-                <Text style={s.catT}>{c.label}</Text>
-                <Text style={s.catS}>{c.sub}</Text>
-              </View>
-              <Feather name="arrow-right" size={20} color={INK} />
-            </TouchableOpacity>
-          ))}
-        </View>
+      <ScrollView contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 24, paddingTop: insets.top + 24, paddingBottom: 170 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        {children}
       </ScrollView>
     </ImageBackground>
   );
 }
-
-function SizeStep({ cat, size, onPick, onBack }) {
-  const [open, setOpen] = useState(true);
-  const c = CATS.find((x) => x.key === cat);
+function HeroLogo() {
   return (
-    <ScrollView style={{ backgroundColor: PAPER }} contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 28, paddingTop: 12, paddingBottom: 150 }} keyboardShouldPersistTaps="handled">
-      <TouchableOpacity onPress={onBack} style={{ flexDirection: "row", alignItems: "center", paddingVertical: 10 }}>
-        <Feather name="arrow-left" size={20} color={INK} />
-        <Text style={{ marginLeft: 8, color: INK, fontSize: 15 }}>{c ? c.label : "Retour"}</Text>
-      </TouchableOpacity>
-      <View style={{ alignItems: "center", marginTop: 18 }}>
-        <Image source={logo} style={{ width: 170, height: 76, resizeMode: "contain" }} />
-        <View style={{ width: 36, height: 1, backgroundColor: COPPER, marginVertical: 26 }} />
-        <Text style={s.display}>Pour quelle montre ?</Text>
-        <Text style={s.lede}>Choisissez la taille de votre Apple Watch, nous vous montrons ce qui lui va.</Text>
+    <View style={{ alignItems: "center" }}>
+      <View style={{ backgroundColor: "rgba(255,255,255,0.95)", borderRadius: 18, paddingHorizontal: 18, paddingVertical: 8 }}>
+        <Image source={logo} style={{ width: 150, height: 64, resizeMode: "contain" }} />
       </View>
-      <View style={{ marginTop: 30 }}>
-        <TouchableOpacity style={s.drop} onPress={() => setOpen(!open)} activeOpacity={0.8}>
+      <View style={{ width: 36, height: 1, backgroundColor: "#E0702F", marginVertical: 22 }} />
+    </View>
+  );
+}
+
+// Étape 1 : taille de la montre
+function Home({ size, onPick }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Hero>
+      <HeroLogo />
+      <View style={{ alignItems: "center" }}>
+        <Text style={[s.display, { color: "#fff" }]}>Pour quelle montre ?</Text>
+        <Text style={[s.lede, { color: "rgba(255,255,255,0.85)" }]}>Choisissez votre modèle, nous vous montrons uniquement ce qui lui va.</Text>
+      </View>
+      <View style={{ marginTop: 34 }}>
+        <TouchableOpacity style={[s.drop, { backgroundColor: "rgba(255,255,255,0.95)", borderColor: "transparent" }]} onPress={() => setOpen(!open)} activeOpacity={0.8}>
           <Text style={s.dropTxt}>{size ? size.label : "Taille de la montre"}</Text>
           <Feather name={open ? "chevron-up" : "chevron-down"} size={20} color={INK} />
         </TouchableOpacity>
         {open && (
-          <View style={s.list}>
+          <View style={[s.list, { backgroundColor: "rgba(255,255,255,0.97)" }]}>
             {WATCH_SIZES.map((x, i) => (
               <TouchableOpacity key={x.key} style={[s.row, i === WATCH_SIZES.length - 1 && { borderBottomWidth: 0 }]} onPress={() => onPick(x)}>
                 <Text style={[s.rowTxt, size && size.key === x.key && { fontWeight: "700" }]}>{x.label}</Text>
@@ -191,17 +177,43 @@ function SizeStep({ cat, size, onPick, onBack }) {
           </View>
         )}
       </View>
-    </ScrollView>
+    </Hero>
   );
 }
 
-function Shop({ size, cat, secs, loading, err, retry, onSize, onOpen }) {
+// Étape 2 : bracelets, chargeurs ou protections
+function CatStep({ size, onCat, onBack }) {
+  return (
+    <Hero>
+      <HeroLogo />
+      <TouchableOpacity onPress={onBack} style={{ alignSelf: "center", flexDirection: "row", alignItems: "center", marginBottom: 14 }}>
+        <Feather name="edit-2" size={14} color="rgba(255,255,255,0.85)" />
+        <Text style={{ marginLeft: 8, color: "rgba(255,255,255,0.9)", fontSize: 15 }}>Apple Watch {size ? size.label : ""} · Modifier</Text>
+      </TouchableOpacity>
+      <Text style={[s.display, { color: "#fff", textAlign: "center" }]}>Que cherchez-vous ?</Text>
+      <View style={{ marginTop: 30 }}>
+        {CATS.map((c) => (
+          <TouchableOpacity key={c.key} style={s.catCard} activeOpacity={0.88} onPress={() => onCat(c)}>
+            <View style={s.catIcon}><Feather name={c.icon} size={24} color="#fff" /></View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.catT}>{c.label}</Text>
+              <Text style={s.catS}>{c.sub}</Text>
+            </View>
+            <Feather name="arrow-right" size={20} color={INK} />
+          </TouchableOpacity>
+        ))}
+      </View>
+    </Hero>
+  );
+}
+
+function Shop({ size, cat, secs, loading, err, retry, onSize, onCatChange, onOpen }) {
   return (
     <View style={{ flex: 1, backgroundColor: PAPER }}>
       <View style={s.header}>
         <Image source={logo} style={{ width: 130, height: 48, resizeMode: "contain" }} />
       </View>
-      <TouchableOpacity onPress={onSize} style={s.sizeBar} activeOpacity={0.7}>
+      <TouchableOpacity onPress={onCatChange} style={s.sizeBar} activeOpacity={0.7}>
         <Text style={s.sizeBarTxt}>{(CATS.find((x) => x.key === cat) || {}).label} · Apple Watch {size ? size.label : ""}</Text>
         <Text style={s.sizeBarLink}>Modifier</Text>
       </TouchableOpacity>
