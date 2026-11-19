@@ -132,8 +132,8 @@ function Btn({ label, onPress, disabled, busy, light }) {
 function Hero({ children }) {
   const insets = useSafeAreaInsets();
   return (
-    <ImageBackground source={{ uri: HERO }} style={{ flex: 1, backgroundColor: "#2A2320" }} resizeMode="cover">
-      <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(10,8,6,0.55)" }} />
+    <ImageBackground source={require("./assets/hero.jpg")} style={{ flex: 1, backgroundColor: "#706860" }} resizeMode="cover">
+      <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(20,16,12,0.12)" }} />
       <ScrollView contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 24, paddingTop: insets.top + 24, paddingBottom: 170 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         {children}
       </ScrollView>
