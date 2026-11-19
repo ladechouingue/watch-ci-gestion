@@ -88,6 +88,13 @@ export default function App() {
   const tab = pick ? "shop" : screen === "done" ? "cart" : screen;
   const go = (t) => { if (t === "wa") { Linking.openURL("https://wa.me/" + WHATSAPP); return; } setPick(null); setScreen(t === "shop" && !size ? "home" : t === "shop" && !cat ? "cat" : t); };
 
+  const back = () => {
+    setPick(null);
+    if (screen === "cat") setScreen("home");
+    else if (screen === "shop") setScreen("cat");
+    else setScreen(size && cat ? "shop" : size ? "cat" : "home");
+  };
+
   if (!ready) return <View style={s.center}><ActivityIndicator color="#141A17" /></View>;
 
   return (
@@ -109,6 +116,7 @@ export default function App() {
         {screen === "done" && <Done r={done} onHome={() => go("shop")} />}
       </View>
       <Nav tab={tab} n={n} onTab={go} />
+      {screen !== "home" && !pick && <BackBtn dark={screen === "cat"} onPress={back} />}
       {pick && <Detail it={pick} onClose={() => setPick(null)} onAdd={add} />}
     </SafeAreaView>
     </SafeAreaProvider>
@@ -125,6 +133,17 @@ function Btn({ label, onPress, disabled, busy, light }) {
     <TouchableOpacity activeOpacity={0.85} disabled={disabled || busy} onPress={onPress}
       style={[s.btn, light && s.btnLight, (disabled || busy) && { opacity: 0.35 }]}>
       {busy ? <ActivityIndicator color={light ? INK : "#fff"} /> : <Text style={[s.btnTxt, light && { color: INK }]}>{label}</Text>}
+    </TouchableOpacity>
+  );
+}
+
+function BackBtn({ onPress, dark }) {
+  const insets = useSafeAreaInsets();
+  return (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.8} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      style={{ position: "absolute", left: 14, top: insets.top + 6, width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center",
+        backgroundColor: dark ? "rgba(255,255,255,0.92)" : "rgba(241,242,239,0.95)", zIndex: 20 }}>
+      <Feather name="arrow-left" size={20} color={INK} />
     </TouchableOpacity>
   );
 }
